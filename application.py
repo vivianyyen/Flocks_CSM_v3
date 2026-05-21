@@ -488,7 +488,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -890,7 +890,7 @@ def page_ai_analyst():
 def page_risk_assessment():
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_risk():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Loading incidents for risk analysis…"):
         df_raw = load_incidents_risk()
@@ -1133,70 +1133,7 @@ def page_risk_assessment():
         </div>
         """, unsafe_allow_html=True)
 
-    # ── Write-back section ────────────────────────────────────────────────────
-    st.markdown("<div class='section-header'>Push Scores to Supabase</div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style="background:#0d1022;border:1px solid #1e2130;border-radius:10px;padding:16px 20px;margin-bottom:16px;">
-        <div style="font-size:13px;color:#b0bccf;line-height:1.7;">
-            Click <b style="color:#e8ecf4;">Apply & Save to Database</b> to overwrite the
-            <code style="color:#4f8ef7;">severity</code>, <code style="color:#4f8ef7;">risk_score</code>,
-            and all component score columns in Supabase with the formula results.<br>
-            <span style="color:#f7a94f;">⚠ Requires the <b>service_role</b> key in your secrets — the anon key is read-only.</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
-    col_btn, col_status = st.columns([1, 3])
-    with col_btn:
-        run_push = st.button("💾 Apply & Save to Database", type="primary", use_container_width=True)
-
-    if run_push:
-        from utils.risk_scorer import build_update_payload
-        client = _supabase()
-
-        id_col = next((c for c in ("id","uuid","incident_id") if c in df_scored.columns), None)
-        if not id_col:
-            st.error("❌ No ID column found (id / uuid / incident_id). Cannot upsert.")
-        else:
-            records = []
-            for _, row in df_scored.iterrows():
-                payload = build_update_payload(row)
-                payload[id_col] = row[id_col]
-                records.append(payload)
-
-            bar     = st.progress(0, text="Pushing scores to Supabase…")
-            success = 0
-            errors  = 0
-            BATCH   = 50
-
-            for i in range(0, len(records), BATCH):
-                batch = records[i:i+BATCH]
-                try:
-                    client.table("incidents").upsert(batch, on_conflict=id_col).execute()
-                    success += len(batch)
-                except Exception as e:
-                    errors += len(batch)
-                    st.warning(f"Batch error: {e}")
-                bar.progress(min((i+BATCH)/len(records), 1.0),
-                             text=f"Pushed {min(i+BATCH, len(records))}/{len(records)} rows…")
-
-            if errors == 0:
-                st.success(f"✅ {success} rows updated successfully in Supabase!")
-                st.cache_data.clear()
-            else:
-                st.warning(f"⚠️ {success} rows pushed, {errors} failed. Check column names and key permissions.")
-                st.markdown("""
-                **If you see errors, run this SQL in Supabase → SQL Editor first:**
-                ```sql
-                ALTER TABLE public.incidents
-                  ADD COLUMN IF NOT EXISTS risk_score          FLOAT,
-                  ADD COLUMN IF NOT EXISTS sector_score        FLOAT,
-                  ADD COLUMN IF NOT EXISTS country_score       FLOAT,
-                  ADD COLUMN IF NOT EXISTS attack_type_score   FLOAT,
-                  ADD COLUMN IF NOT EXISTS data_exposure_score FLOAT,
-                  ADD COLUMN IF NOT EXISTS attack_class        TEXT;
-                ```
-                """)
 
     # ── Full scored table ─────────────────────────────────────────────────────
     with st.expander("📋 View all scored incidents"):
