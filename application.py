@@ -358,6 +358,50 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
+# ── Category → colour helpers ─────────────────────────────────────────────────
+CATEGORY_BASE_COLORS = {
+    "data breach":       "#e53935",
+    "data breached":     "#e53935",
+    "ransomware":        "#ff6f00",
+    "phishing":          "#f9a825",
+    "malware":           "#6a1b9a",
+    "ddos":              "#1565c0",
+    "insider threat":    "#2e7d32",
+    "zero-day":          "#00838f",
+    "social engineering":"#ad1457",
+    "supply chain":      "#4527a0",
+    "credential theft":  "#c62828",
+    "iot attack":        "#558b2f",
+    "cryptojacking":     "#ef6c00",
+    "apt":               "#283593",
+    "uncategorised":     "#546e7a",
+}
+
+def _get_category_color(category: str) -> str:
+    if not category or str(category).lower() in ("nan", "none", ""):
+        return CATEGORY_BASE_COLORS["uncategorised"]
+    key = str(category).strip().lower()
+    for k, v in CATEGORY_BASE_COLORS.items():
+        if k in key or key in k:
+            return v
+    palette = ["#e53935","#ff6f00","#6a1b9a","#1565c0","#2e7d32","#00838f","#ad1457","#4527a0"]
+    return palette[hash(key) % len(palette)]
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+def _lighten_hex(hex_color: str, factor: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+    r = int(r + (255-r)*factor)
+    g = int(g + (255-g)*factor)
+    b = int(b + (255-b)*factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+
 def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
     """Render clickable news cards. Clicking opens a full detail panel below the list."""
 
@@ -652,7 +696,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -804,7 +848,7 @@ def page_cyber_news():
         display_df = df[show_cols].copy()
         if "incident_date" in display_df.columns:
             display_df = display_df.sort_values("incident_date", ascending=False)
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, width='stretch', hide_index=True)
         with st.expander("🔍 Debug: column names & row count"):
             st.code(
                 f"Rows fetched (raw): {len(df_raw)}\n"
@@ -911,7 +955,7 @@ def page_ransomware():
                           xaxis=dict(showgrid=False),
                           yaxis=dict(showgrid=True, gridcolor="#21262d", tickformat="d", dtick=1),
                           margin=dict(l=10,r=10,t=40,b=10))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     st.markdown("<div class='section-header'>Sectors</div>", unsafe_allow_html=True)
     rc2, rc4 = st.columns([1, 1])
@@ -926,7 +970,7 @@ def page_ransomware():
                               title_font_color="#fcf3f0",
                               legend=dict(font=dict(size=10)),
                               margin=dict(l=10,r=10,t=40,b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
     with rc4:
         if "threat_actor" in rw_f.columns and not rw_f.empty:
@@ -941,7 +985,7 @@ def page_ransomware():
                               yaxis=dict(autorange="reversed"),
                               coloraxis_showscale=False,
                               margin=dict(l=10,r=10,t=40,b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
     if "severity" in rw_f.columns and not rw_f.empty:
         st.markdown("<div class='section-header'>Severity Distribution</div>", unsafe_allow_html=True)
@@ -975,7 +1019,7 @@ def page_ransomware():
             fig.update_layout(paper_bgcolor="#161b22", plot_bgcolor="#161b22",
                               font_color="#c9d1d9", title_font_color="#f0f6fc",
                               showlegend=False, margin=dict(l=10,r=10,t=40,b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
     st.markdown("<div class='section-header'>Recent Victim Posts</div>", unsafe_allow_html=True)
     SEV_CLASS = {"critical":"sev-critical","high":"sev-high","medium":"sev-medium","low":"sev-low"}
@@ -1004,7 +1048,7 @@ def page_ransomware():
         show_rw      = [c for c in preferred_rw if c in rw_f.columns] or list(rw_f.columns)
         rw_disp      = rw_f[show_rw].copy()
         if date_col: rw_disp = rw_disp.sort_values(date_col, ascending=False)
-        st.dataframe(rw_disp, use_container_width=True, hide_index=True)
+        st.dataframe(rw_disp, width='stretch', hide_index=True)
         with st.expander("🔍 Debug: column names"):
             st.code(
                 f"Rows fetched (raw): {len(rw_raw)}\n"
@@ -1032,7 +1076,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
