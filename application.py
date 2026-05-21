@@ -512,7 +512,7 @@ def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
 
         # Invisible button overlaid for click detection
         btn_key = f"intel_card_{i}"
-        if st.button("Open", key=btn_key, label_visibility="collapsed"):
+        if st.button("›", key=btn_key, help="View details"):
             if st.session_state["intel_selected_idx"] == i:
                 st.session_state["intel_selected_idx"] = None  # toggle off
             else:
@@ -696,7 +696,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -1076,7 +1076,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
