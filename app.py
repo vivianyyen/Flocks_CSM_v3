@@ -22,6 +22,7 @@ from utils.charts import (
     render_source_breakdown,
 )
 from utils.chatbot import chatbot_ui
+from utils.risk_scorer import score_dataframe, compute_impact_score
 
 TZ_MY = ZoneInfo("Asia/Kuala_Lumpur")
 def now_my(): return datetime.now(tz=TZ_MY)
@@ -884,13 +885,278 @@ def page_ai_analyst():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  PAGE 4 — RISK ASSESSMENT
+# ══════════════════════════════════════════════════════════════════════════════
+def page_risk_assessment():
+    @st.cache_data(ttl=120, show_spinner=False)
+    def load_incidents_risk():
+        return get_data("incidents")
+
+    with st.spinner("Loading incidents for risk analysis…"):
+        df_raw = load_incidents_risk()
+
+    with st.sidebar:
+        _sidebar_branding()
+        st.markdown(_filter_label("Risk Filters"), unsafe_allow_html=True)
+        _sidebar_footer()
+
+    page_header("⚖️ Risk Assessment", "Custom impact scoring · Formula-driven severity classification")
+
+    if df_raw is None or df_raw.empty:
+        st.error("⚠️ Could not load data from Supabase.")
+        st.stop()
+
+    # parse dates
+    df_all = df_raw.copy()
+    for col in ("incident_date", "publication_date"):
+        if col in df_all.columns:
+            df_all[col] = pd.to_datetime(df_all[col], errors="coerce", utc=True).dt.tz_convert(TZ_MY)
+
+    # ── Formula explainer card ────────────────────────────────────────────────
+    st.markdown("""
+    <div style="background:#131829;border:1px solid #1e2130;border-radius:12px;padding:20px 26px;margin-bottom:22px;">
+        <div style="font-size:14px;font-weight:700;color:#e8ecf4;margin-bottom:10px;">📐 Impact Score Formula</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#4f8ef7;margin-bottom:14px;">
+            Impact Score = 0.25 × Sector + 0.20 × Country + 0.35 × Attack Type + 0.20 × Data Exposure
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+            <div style="background:#0d1022;border:1px solid #1e2130;border-radius:8px;padding:12px;">
+                <div style="font-size:11px;font-weight:600;color:#7a8599;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;">W1 · Sector (25%)</div>
+                <div style="font-size:12px;color:#b0bccf;line-height:1.7;">
+                    🔴 Gov/Health/Finance/Defense/Energy → 0.8<br>
+                    🟠 Manufacturing/Telecom/Transport → 0.6<br>
+                    🟡 Consumer/Retail/Industrial → 0.4<br>
+                    ⚪ Other → 0.2
+                </div>
+            </div>
+            <div style="background:#0d1022;border:1px solid #1e2130;border-radius:8px;padding:12px;">
+                <div style="font-size:11px;font-weight:600;color:#7a8599;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;">W2 · Country (20%)</div>
+                <div style="font-size:12px;color:#b0bccf;line-height:1.7;">
+                    🇲🇾 Malaysia → 0.7<br>
+                    🌏 Southeast Asia → 0.5<br>
+                    🌐 Global / Other → 0.3
+                </div>
+            </div>
+            <div style="background:#0d1022;border:1px solid #1e2130;border-radius:8px;padding:12px;">
+                <div style="font-size:11px;font-weight:600;color:#7a8599;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;">W3 · Attack Type (35%)</div>
+                <div style="font-size:12px;color:#b0bccf;line-height:1.7;">
+                    🔴 Ransomware/RCE/APT/Breach → 0.9<br>
+                    🟠 Phishing/Malware/DDoS/BF → 0.5<br>
+                    🟡 Defacement/Spam/Recon → 0.2
+                </div>
+            </div>
+            <div style="background:#0d1022;border:1px solid #1e2130;border-radius:8px;padding:12px;">
+                <div style="font-size:11px;font-weight:600;color:#7a8599;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;">W4 · Data Exposure (20%)</div>
+                <div style="font-size:12px;color:#b0bccf;line-height:1.7;">
+                    🔴 Identity/Financial/Legal → 0.8<br>
+                    🟠 Reputational damage → 0.5<br>
+                    🟡 Competitive/Minor → 0.3
+                </div>
+            </div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:#7a8599;">
+            Thresholds: <span style="color:#f76c6c;font-weight:600;">Critical ≥ 0.70</span> &nbsp;·&nbsp;
+            <span style="color:#f7a94f;font-weight:600;">High ≥ 0.50</span> &nbsp;·&nbsp;
+            <span style="color:#4f8ef7;font-weight:600;">Medium ≥ 0.30</span> &nbsp;·&nbsp;
+            <span style="color:#3ecf8e;font-weight:600;">Low &lt; 0.30</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Score all rows ────────────────────────────────────────────────────────
+    with st.spinner("Applying risk formula to all incidents…"):
+        df_scored = score_dataframe(df_all)
+
+    SEV_COLORS = {
+        "Critical": ("#f76c6c","#3d0f0f"),
+        "High":     ("#f7a94f","#2d1b0a"),
+        "Medium":   ("#4f8ef7","#0a1f2a"),
+        "Low":      ("#3ecf8e","#0a1f17"),
+    }
+    SEV_ORDER = ["Critical","High","Medium","Low"]
+
+    # ── KPIs ──────────────────────────────────────────────────────────────────
+    dist = df_scored["severity"].value_counts()
+    total = len(df_scored)
+    k_cols = st.columns(5)
+    kpi_row([
+        (k_cols[0], total,                  "Total Assessed",    "All incidents",        ""),
+        (k_cols[1], int(dist.get("Critical",0)), "Critical",     "Score ≥ 0.70",         "warn"),
+        (k_cols[2], int(dist.get("High",0)),    "High",          "Score ≥ 0.50",         "warn"),
+        (k_cols[3], int(dist.get("Medium",0)),  "Medium",        "Score ≥ 0.30",         "up"),
+        (k_cols[4], int(dist.get("Low",0)),     "Low",           "Score < 0.30",         ""),
+    ])
+
+    # ── Distribution charts ───────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>Severity Distribution</div>", unsafe_allow_html=True)
+    ch1, ch2, ch3 = st.columns([1,1,1])
+
+    with ch1:
+        # Donut
+        d_data = pd.DataFrame({
+            "Severity": SEV_ORDER,
+            "Count": [int(dist.get(s,0)) for s in SEV_ORDER]
+        })
+        fig = px.pie(d_data, names="Severity", values="Count", hole=0.55,
+                     color="Severity",
+                     color_discrete_map={s:SEV_COLORS[s][0] for s in SEV_ORDER},
+                     title="Severity Split")
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#b0bccf",
+                          title_font_color="#e8ecf4", margin=dict(l=0,r=0,t=36,b=0),
+                          legend=dict(font=dict(size=11)))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with ch2:
+        # Risk score distribution histogram
+        fig2 = px.histogram(df_scored, x="risk_score", nbins=20,
+                            color_discrete_sequence=["#4f8ef7"],
+                            title="Risk Score Distribution")
+        fig2.add_vline(x=0.70, line_dash="dash", line_color="#f76c6c",
+                       annotation_text="Critical", annotation_font_color="#f76c6c")
+        fig2.add_vline(x=0.50, line_dash="dash", line_color="#f7a94f",
+                       annotation_text="High",     annotation_font_color="#f7a94f")
+        fig2.add_vline(x=0.30, line_dash="dash", line_color="#4f8ef7",
+                       annotation_text="Medium",   annotation_font_color="#4f8ef7")
+        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                           font_color="#b0bccf", title_font_color="#e8ecf4",
+                           xaxis=dict(gridcolor="#1e2130", range=[0,1]),
+                           yaxis=dict(gridcolor="#1e2130"),
+                           margin=dict(l=10,r=10,t=36,b=10))
+        st.plotly_chart(fig2, use_container_width=True)
+
+    with ch3:
+        # Average component scores radar / bar
+        comp_avg = pd.DataFrame({
+            "Component": ["Sector (W1)", "Country (W2)", "Attack Type (W3)", "Data Exposure (W4)"],
+            "Avg Score": [
+                df_scored["sector_score"].mean(),
+                df_scored["country_score"].mean(),
+                df_scored["attack_type_score"].mean(),
+                df_scored["data_exposure_score"].mean(),
+            ]
+        })
+        fig3 = px.bar(comp_avg, x="Component", y="Avg Score",
+                      color="Avg Score", color_continuous_scale=["#1e2130","#f76c6c"],
+                      title="Avg Component Scores",
+                      text=comp_avg["Avg Score"].round(2))
+        fig3.update_traces(textposition="outside", textfont_color="#e8ecf4")
+        fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                           font_color="#b0bccf", title_font_color="#e8ecf4",
+                           coloraxis_showscale=False,
+                           xaxis=dict(gridcolor="#1e2130", tickfont=dict(size=10)),
+                           yaxis=dict(gridcolor="#1e2130", range=[0,1]),
+                           margin=dict(l=10,r=10,t=36,b=10))
+        st.plotly_chart(fig3, use_container_width=True)
+
+    # ── Attack class breakdown ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>Attack Class Breakdown</div>", unsafe_allow_html=True)
+    if "attack_class" in df_scored.columns:
+        ac_counts = df_scored["attack_class"].value_counts().reset_index()
+        ac_counts.columns = ["Attack Class","Count"]
+        ac_colors = {
+            "Critical Attack":  "#f76c6c",
+            "Medium Attack":    "#f7a94f",
+            "Low-Level Attack": "#3ecf8e",
+            "Unclassified":     "#7a8599",
+        }
+        fig_ac = px.bar(ac_counts, x="Count", y="Attack Class", orientation="h",
+                        color="Attack Class",
+                        color_discrete_map=ac_colors,
+                        title="Incidents by Attack Class")
+        fig_ac.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                             font_color="#b0bccf", title_font_color="#e8ecf4",
+                             yaxis=dict(categoryorder="total ascending"),
+                             showlegend=False,
+                             margin=dict(l=10,r=10,t=36,b=10),
+                             xaxis=dict(gridcolor="#1e2130"),
+                             yaxis2=dict(gridcolor="#1e2130"))
+        st.plotly_chart(fig_ac, use_container_width=True)
+
+    # ── Top critical incidents table ───────────────────────────────────────────
+    st.markdown("<div class='section-header'>Top Critical & High Incidents</div>", unsafe_allow_html=True)
+
+    top_df = df_scored[df_scored["severity"].isin(["Critical","High"])]\
+                .sort_values("risk_score", ascending=False).head(20)
+
+    title_col   = next((c for c in ("title","headline","name") if c in top_df.columns), None)
+    date_col    = next((c for c in ("incident_date","publication_date") if c in top_df.columns), None)
+    country_col = "country" if "country" in top_df.columns else None
+    cat_col     = "category" if "category" in top_df.columns else None
+
+    for _, row in top_df.iterrows():
+        title   = _strip_html(str(row.get(title_col, "Untitled") if title_col else "Untitled"))[:100]
+        sev     = row.get("severity","Unknown")
+        score   = row.get("risk_score", 0)
+        country = str(row.get(country_col,"") if country_col else "")
+        cat     = str(row.get(cat_col,   "") if cat_col     else "")
+        ac      = row.get("attack_class","")
+        date_s  = ""
+        if date_col and pd.notna(row.get(date_col)):
+            try: date_s = row[date_col].strftime("%d %b %Y")
+            except: pass
+
+        fg, bg = SEV_COLORS.get(sev, ("#7a8599","#1c1c1c"))
+        cat_color = _get_category_color(cat)
+        bar_pct   = int(score * 100)
+
+        # sub-scores
+        s1 = row.get("sector_score",0)
+        s2 = row.get("country_score",0)
+        s3 = row.get("attack_type_score",0)
+        s4 = row.get("data_exposure_score",0)
+
+        st.markdown(f"""
+        <div style="background:#131829;border:1px solid #1e2130;border-left:3px solid {fg};
+                    border-radius:10px;padding:14px 18px;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+                <div style="font-size:14px;font-weight:600;color:#e8ecf4;">{title}</div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span style="background:{bg};color:{fg};font-size:11px;font-weight:700;
+                                 font-family:'IBM Plex Mono',monospace;padding:2px 10px;
+                                 border-radius:100px;text-transform:uppercase;">{sev}</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;
+                                 font-weight:700;color:{fg};">{score:.3f}</span>
+                </div>
+            </div>
+            <div style="background:#1e2130;border-radius:4px;height:6px;margin-bottom:10px;">
+                <div style="width:{bar_pct}%;background:linear-gradient(90deg,{bg},{fg});height:6px;border-radius:4px;"></div>
+            </div>
+            <div style="display:flex;gap:18px;font-size:11px;color:#7a8599;font-family:'IBM Plex Mono',monospace;flex-wrap:wrap;">
+                <span>📅 {date_s}</span>
+                <span>🌏 {country}</span>
+                <span style="color:{cat_color};">⬛ {cat}</span>
+                <span>⚡ {ac}</span>
+                <span style="margin-left:auto;">
+                    S:{s1:.2f} · C:{s2:.2f} · A:{s3:.2f} · D:{s4:.2f}
+                </span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+
+    # ── Full scored table ─────────────────────────────────────────────────────
+    with st.expander("📋 View all scored incidents"):
+        show_cols = [c for c in [
+            title_col, "severity","risk_score",
+            "sector_score","country_score","attack_type_score","data_exposure_score",
+            "attack_class", date_col, country_col, cat_col
+        ] if c and c in df_scored.columns]
+        st.dataframe(
+            df_scored[show_cols].sort_values("risk_score", ascending=False),
+            use_container_width=True, hide_index=True
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  NAVIGATION
 # ══════════════════════════════════════════════════════════════════════════════
 pg = st.navigation(
     [
-        st.Page(page_cyber_news, title="Cyber News",      icon="📰", default=True),
-        st.Page(page_ransomware, title="Ransomware Live", icon="🔴"),
-        st.Page(page_ai_analyst, title="AI Analyst",      icon="🤖"),
+        st.Page(page_cyber_news,      title="Cyber News",       icon="📰", default=True),
+        st.Page(page_ransomware,      title="Ransomware Live",  icon="🔴"),
+        st.Page(page_risk_assessment, title="Risk Assessment",  icon="⚖️"),
+        st.Page(page_ai_analyst,      title="AI Analyst",       icon="🤖"),
     ],
     position="top",
 )
