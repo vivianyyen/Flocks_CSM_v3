@@ -488,7 +488,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("incidents")   # ← paginated, returns ALL rows
+        return get_data("cyber_news")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -890,7 +890,7 @@ def page_ai_analyst():
 def page_risk_assessment():
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_risk():
-        return get_data("incidents")
+        return get_data("cyber_news")
 
     with st.spinner("Loading incidents for risk analysis…"):
         df_raw = load_incidents_risk()
