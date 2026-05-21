@@ -160,7 +160,7 @@ html, body { font-family: 'IBM Plex Sans', sans-serif; }
 }
 .dash-title    { font-size: 22px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.3px; }
 .dash-subtitle { font-size: 12.5px; color: #8b949e; margin-top: 3px; }
-.dash-live     { font-size: 11.5px; color: #3fb950; font-family:'IBM Plex Mono',monospace; }
+.dash-live     { font-size: 11.5px; color: #3fb950; font-family:IBM Plex Mono,monospace; }
 .live-dot {
     display: inline-block; width: 7px; height: 7px;
     background: #3fb950; border-radius: 50%; margin-right: 5px;
@@ -174,9 +174,9 @@ html, body { font-family: 'IBM Plex Sans', sans-serif; }
     border-radius: 10px; padding: 18px 20px; text-align: center; transition: border-color .2s;
 }
 .kpi-card:hover { border-color: #388bfd; }
-.kpi-number { font-size: 36px; font-weight: 600; color: #f0f6fc; font-family:'IBM Plex Mono',monospace; line-height: 1; }
+.kpi-number { font-size: 36px; font-weight: 600; color: #f0f6fc; font-family:IBM Plex Mono,monospace; line-height: 1; }
 .kpi-label  { font-size: 12px; color: #8b949e; margin-top: 6px; text-transform: uppercase; letter-spacing: .08em; }
-.kpi-delta  { font-size: 12px; margin-top: 6px; font-family:'IBM Plex Mono',monospace; }
+.kpi-delta  { font-size: 12px; margin-top: 6px; font-family:IBM Plex Mono,monospace; }
 .kpi-up   { color: #3fb950; }
 .kpi-warn { color: #f78166; }
 
@@ -194,9 +194,9 @@ html, body { font-family: 'IBM Plex Sans', sans-serif; }
     padding: 14px 16px; margin-bottom: 10px;
 }
 .victim-name  { font-size: 15px; font-weight: 600; color: #f0f6fc; }
-.victim-meta  { font-size: 12px; color: #8b949e; margin-top: 4px; font-family:'IBM Plex Mono',monospace; }
+.victim-meta  { font-size: 12px; color: #8b949e; margin-top: 4px; font-family:IBM Plex Mono,monospace; }
 .victim-badge {
-    display: inline-block; font-size: 11px; font-family:'IBM Plex Mono',monospace;
+    display: inline-block; font-size: 11px; font-family:IBM Plex Mono,monospace;
     padding: 2px 8px; border-radius: 4px; margin-top: 6px; font-weight: 600;
 }
 .sev-critical { background:#3d0f0f; color:#ff6b6b; }
@@ -308,7 +308,7 @@ def _sidebar_branding():
     st.markdown(f"""
     <div style="padding:20px 4px 14px;border-bottom:1px solid #1a1f2e;margin-bottom:10px;">
         <div style="font-size:16px;font-weight:600;color:#f0f6fc;">🛡️ Incident Intel</div>
-        <div style="font-size:11px;color:#484f58;font-family:'IBM Plex Mono',monospace;margin-top:3px;">
+        <div style="font-size:11px;color:#484f58;font-family:IBM Plex Mono,monospace;margin-top:3px;">
             <span class="live-dot"></span> LIVE · {now_my().strftime('%H:%M')} GMT+8
         </div>
     </div>
@@ -359,35 +359,32 @@ def _strip_html(text: str) -> str:
 
 
 def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
-    """Render a live intelligence feed from the incidents DataFrame."""
+    """Render clickable news cards. Clicking opens a full detail panel below the list."""
 
-    IMPACT_ACCENT = {
-        "critical": "accent-critical",
-        "high":     "accent-high",
-        "medium":   "accent-medium",
-        "low":      "accent-low",
-    }
-    IMPACT_BADGE = {
-        "critical": "ibadge-critical",
-        "high":     "ibadge-high",
-        "medium":   "ibadge-medium",
-        "low":      "ibadge-low",
-    }
+    SEV_FG = {"critical":"#f76c6c","high":"#f7a94f","medium":"#4f8ef7","low":"#3ecf8e","unknown":"#7a8599"}
+    SEV_BG = {"critical":"#3d0f0f","high":"#2d1b0a","medium":"#0a1f2a","low":"#0a1f17","unknown":"#1c1c1c"}
+    SEV_BORDER = {"critical":"#f76c6c","high":"#f7a94f","medium":"#4f8ef7","low":"#3ecf8e","unknown":"#484f58"}
 
-    # Resolve column names with safe fallbacks
-    title_col          = next((c for c in ("title", "headline", "name")             if c in df.columns), None)
-    summary_col        = next((c for c in ("summary", "description", "content")     if c in df.columns), None)
-    source_col         = next((c for c in ("source", "origin", "feed")              if c in df.columns), None)
-    impact_col         = next((c for c in ("impact", "criticality")                 if c in df.columns), None)
-    severity_col       = next((c for c in ("severity",)                             if c in df.columns), None)
-    incident_type_col  = next((c for c in ("incident_type", "type", "attack_type")  if c in df.columns), None)
-    entity_col         = next((c for c in ("entity_affected", "entity", "target", "victim") if c in df.columns), None)
-    date_col           = next((c for c in ("incident_date", "publication_date", "date") if c in df.columns), None)
+    # Column resolution — uses your exact DB field names with fallbacks
+    title_col     = next((c for c in ("title","headline","name")                          if c in df.columns), None)
+    summary_col   = next((c for c in ("summary","description","content")                  if c in df.columns), None)
+    source_col    = next((c for c in ("source","origin","feed")                           if c in df.columns), None)
+    severity_col  = next((c for c in ("severity",)                                        if c in df.columns), None)
+    impact_col    = next((c for c in ("impact","criticality")                             if c in df.columns), None)
+    inc_type_col  = next((c for c in ("incident_type","type","attack_type")               if c in df.columns), None)
+    entity_col    = next((c for c in ("entity_affected","entity","target","victim")       if c in df.columns), None)
+    date_col      = next((c for c in ("incident_date","publication_date","date")          if c in df.columns), None)
+    pub_date_col  = "publication_date" if "publication_date" in df.columns else None
+    inc_date_col  = "incident_date"    if "incident_date"    in df.columns else None
+    cat_col       = "category"         if "category"         in df.columns else None
+    country_col   = "country"          if "country"          in df.columns else None
+    url_col       = next((c for c in ("url","link","source_url")                          if c in df.columns), None)
+    kw_col        = next((c for c in ("relevant_keywords","keywords","tags")              if c in df.columns), None)
 
     feed_df = df.copy()
     if date_col:
         feed_df = feed_df.sort_values(date_col, ascending=False)
-    feed_df = feed_df.head(max_items)
+    feed_df = feed_df.head(max_items).reset_index(drop=True)
 
     if feed_df.empty:
         st.info("No incidents match the current filters.")
@@ -395,103 +392,267 @@ def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
 
     now = now_my()
 
-    for _, row in feed_df.iterrows():
-        # Prefer the explicit 'severity' column; fall back to 'impact'
-        sev_raw    = str(row.get(severity_col, "") if severity_col else "").strip().lower()
-        impact_raw = str(row.get(impact_col,   "") if impact_col   else "").strip().lower()
-        # Use severity if it's a recognised level, else try impact, else unknown
-        impact_key = (
-            sev_raw    if sev_raw    in IMPACT_BADGE else
-            impact_raw if impact_raw in IMPACT_BADGE else
-            "unknown"
-        )
-        accent_cls = IMPACT_ACCENT.get(impact_key, "accent-low")
-        badge_cls  = IMPACT_BADGE.get(impact_key, "ibadge-unknown")
-        impact_lbl = impact_key.capitalize()
+    # ── Session state for selected card ──────────────────────────────────────
+    if "intel_selected_idx" not in st.session_state:
+        st.session_state["intel_selected_idx"] = None
 
-        # ── top-row fields: incident_type + entity_affected ──────────────────
-        inc_type = str(row.get(incident_type_col, "") if incident_type_col else "").strip()
-        entity   = str(row.get(entity_col, "")        if entity_col        else "").strip()
+    # ── News list ─────────────────────────────────────────────────────────────
+    for i, (_, row) in enumerate(feed_df.iterrows()):
+        sev_raw   = str(row.get(severity_col,"") if severity_col else "").strip().lower()
+        imp_raw   = str(row.get(impact_col,  "") if impact_col   else "").strip().lower()
+        sev_key   = sev_raw if sev_raw in SEV_FG else imp_raw if imp_raw in SEV_FG else "unknown"
+        fg        = SEV_FG[sev_key]
+        bg        = SEV_BG[sev_key]
+        border    = SEV_BORDER[sev_key]
 
-        inc_type_html = (
-            f'<span class="intel-cat">{inc_type}</span>' if inc_type and inc_type.lower() not in ("", "nan", "none") else ""
-        )
-        entity_html = (
-            f'<span class="intel-cat" style="color:#c9d1d9;border-color:#388bfd;">{entity}</span>'
-            if entity and entity.lower() not in ("", "nan", "none") else ""
-        )
+        title     = _strip_html(str(row.get(title_col,  "Untitled") if title_col  else "Untitled"))
+        summary   = _strip_html(str(row.get(summary_col,"")         if summary_col else ""))
+        source    = _strip_html(str(row.get(source_col, "Unknown")  if source_col  else "Unknown"))
+        cat       = str(row.get(cat_col,   "") if cat_col    else "").strip()
+        inc_type  = str(row.get(inc_type_col,"") if inc_type_col else "").strip()
 
-        title   = _strip_html(str(row.get(title_col,   "Untitled") if title_col   else "Untitled"))
-        summary = _strip_html(str(row.get(summary_col, "")         if summary_col else ""))
-        # Truncate at sentence boundary first, then word boundary — no mid-word cuts
-        if len(summary) > 400:
-            # Try to cut at last full sentence within 400 chars
-            cut = summary[:400]
-            last_period = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-            if last_period > 150:
-                summary = cut[:last_period + 1]
-            else:
-                # Fall back to last word boundary
-                last_space = cut.rfind(" ")
-                summary = cut[:last_space] + "…" if last_space > 0 else cut + "…"
-        source  = _strip_html(str(row.get(source_col, "Unknown source") if source_col else "Unknown source"))
+        short_sum = summary[:160] + "…" if len(summary) > 160 else summary
 
-        # Relative time string
         time_str = ""
         if date_col and pd.notna(row.get(date_col)):
-            delta = now - row[date_col]
-            mins  = int(delta.total_seconds() / 60)
-            if mins < 1:
-                time_str = "just now"
-            elif mins < 60:
-                time_str = f"{mins} min ago"
-            elif mins < 1440:
-                time_str = f"{mins // 60} hr ago"
+            try:
+                mins = int((now - row[date_col]).total_seconds() / 60)
+                if mins < 1:      time_str = "just now"
+                elif mins < 60:   time_str = f"{mins}m ago"
+                elif mins < 1440: time_str = f"{mins//60}h ago"
+                else:             time_str = f"{mins//1440}d ago"
+            except: pass
+
+        is_hot = (sev_key in ("critical","high") and date_col
+                  and pd.notna(row.get(date_col))
+                  and (now - row[date_col]).total_seconds() < 21600)
+
+        cat_color  = _get_category_color(cat)
+        type_color = _lighten_hex(cat_color, 0.4) if cat else "#7a8599"
+        is_selected = st.session_state["intel_selected_idx"] == i
+
+        # Card HTML — always rendered
+        selected_style = f"border-color:{fg};background:#15192c;box-shadow:0 0 18px {fg}22;" if is_selected else ""
+        hot_badge = ('<span style="background:#f76c6c;color:#fff;font-size:10px;font-weight:700;'
+                     'padding:2px 8px;border-radius:100px;font-family:IBM Plex Mono,monospace;'
+                     'letter-spacing:.1em;animation:blink 1.5s infinite;">🔥 HOT</span>'
+                     if is_hot else "")
+        cat_badge  = f'<span style="background:{_hex_to_rgba(cat_color,0.15)};color:{cat_color};font-size:10px;font-weight:600;font-family:IBM Plex Mono,monospace;padding:2px 9px;border-radius:100px;text-transform:uppercase;">{cat}</span>' if cat and cat.lower() not in ("nan","none","") else ""
+        type_badge = f'<span style="background:{_hex_to_rgba(type_color,0.13)};color:{type_color};font-size:10px;font-weight:600;font-family:IBM Plex Mono,monospace;padding:2px 9px;border-radius:100px;text-transform:uppercase;">{inc_type}</span>' if inc_type and inc_type.lower() not in ("nan","none","") else ""
+
+        st.markdown(f"""
+        <div style="background:#131829;border:1px solid #1e2130;border-left:3px solid {border};
+                    border-radius:10px;padding:14px 18px;margin-bottom:6px;cursor:pointer;
+                    transition:all .18s ease;{selected_style}">
+            <div style="display:flex;align-items:flex-start;gap:14px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px;">
+                        <span style="background:{bg};color:{fg};font-size:10px;font-weight:700;
+                                     font-family:IBM Plex Mono,monospace;padding:2px 9px;
+                                     border-radius:100px;text-transform:uppercase;">{sev_key.upper()}</span>
+                        {cat_badge}{type_badge}{hot_badge}
+                        <span style="margin-left:auto;font-size:11px;color:#4a5568;font-family:IBM Plex Mono,monospace;">{time_str}</span>
+                    </div>
+                    <div style="font-size:14px;font-weight:600;color:#e8ecf4;line-height:1.45;margin-bottom:5px;
+                                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{title}</div>
+                    <div style="font-size:12.5px;color:#7a8599;line-height:1.55;margin-bottom:8px;
+                                display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{short_sum}</div>
+                    <div style="font-size:11px;color:#4a5568;font-family:IBM Plex Mono,monospace;">
+                        📰 {source}
+                    </div>
+                </div>
+                <div style="flex-shrink:0;font-size:18px;color:#4a5568;padding-top:2px;">›</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Invisible button overlaid for click detection
+        btn_key = f"intel_card_{i}"
+        if st.button("Open", key=btn_key, label_visibility="collapsed"):
+            if st.session_state["intel_selected_idx"] == i:
+                st.session_state["intel_selected_idx"] = None  # toggle off
             else:
-                days = mins // 1440
-                time_str = f"{days} day{'s' if days > 1 else ''} ago"
+                st.session_state["intel_selected_idx"] = i
+            st.rerun()
 
-        # HOT = critical or high AND posted within last 6 hours
-        is_hot = (
-            impact_key in ("critical", "high")
-            and date_col
-            and pd.notna(row.get(date_col))
-            and (now - row[date_col]).total_seconds() < 21600
+        # ── Detail panel — renders inline right below the clicked card ────────
+        if st.session_state["intel_selected_idx"] == i:
+            _render_detail_panel(row, {
+                "title_col": title_col, "summary_col": summary_col,
+                "source_col": source_col, "severity_col": severity_col,
+                "impact_col": impact_col, "inc_type_col": inc_type_col,
+                "entity_col": entity_col, "inc_date_col": inc_date_col,
+                "pub_date_col": pub_date_col, "cat_col": cat_col,
+                "country_col": country_col, "url_col": url_col, "kw_col": kw_col,
+            }, sev_key, fg, bg)
+
+
+def _render_detail_panel(row: "pd.Series", cols: dict, sev_key: str, fg: str, bg: str):
+    """Render the expanded detail card — styled like the Flare intelligence UI."""
+
+    SEV_FG = {"critical":"#f76c6c","high":"#f7a94f","medium":"#4f8ef7","low":"#3ecf8e","unknown":"#7a8599"}
+
+    def _val(col_key):
+        c = cols.get(col_key)
+        if not c: return ""
+        v = row.get(c, "")
+        return "" if str(v).strip().lower() in ("","nan","none") else _strip_html(str(v))
+
+    def _date_str(col_key):
+        c = cols.get(col_key)
+        if not c: return ""
+        v = row.get(c)
+        if pd.isna(v) if v is not None else True: return ""
+        try: return v.strftime("%d %b %Y, %H:%M")
+        except: return str(v)
+
+    title     = _val("title_col")   or "Untitled"
+    summary   = _val("summary_col")
+    source    = _val("source_col")  or "Unknown source"
+    cat       = _val("cat_col")
+    inc_type  = _val("inc_type_col")
+    entity    = _val("entity_col")
+    country   = _val("country_col")
+    url       = cols.get("url_col") and row.get(cols["url_col"],"") or ""
+    url       = "" if str(url).strip().lower() in ("","nan","none") else str(url).strip()
+    inc_date  = _date_str("inc_date_col")
+    pub_date  = _date_str("pub_date_col")
+
+    # keywords
+    kw_col = cols.get("kw_col")
+    kw_raw = str(row.get(kw_col,"")) if kw_col else ""
+    keywords = [k.strip() for k in _re.split(r"[,;|]", kw_raw)
+                if k.strip() and k.strip().lower() not in ("nan","none","")]
+
+    cat_color  = _get_category_color(cat)
+    type_color = _lighten_hex(cat_color, 0.4) if cat else "#7a8599"
+
+    # severity score bar (risk_score if available)
+    risk_score = row.get("risk_score", None)
+    score_html = ""
+    if risk_score is not None:
+        pct = int(float(risk_score) * 100)
+        score_html = f"""
+        <div style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                <span style="font-size:11px;color:#7a8599;font-family:IBM Plex Mono,monospace;text-transform:uppercase;letter-spacing:.09em;">Risk Score</span>
+                <span style="font-size:12px;font-weight:700;color:{fg};font-family:IBM Plex Mono,monospace;">{float(risk_score):.3f}</span>
+            </div>
+            <div style="background:#1e2130;border-radius:4px;height:6px;">
+                <div style="width:{pct}%;background:linear-gradient(90deg,{bg},{fg});height:6px;border-radius:4px;"></div>
+            </div>
+        </div>"""
+
+    # sub-scores
+    sub_scores_html = ""
+    sub_labels = [("Sector","sector_score"),("Country","country_score"),
+                  ("Attack","attack_type_score"),("Exposure","data_exposure_score")]
+    sub_rows = [(lbl, row.get(key)) for lbl, key in sub_labels if row.get(key) is not None]
+    if sub_rows:
+        sub_html = "".join(
+            f'<div style="flex:1;background:#0d1022;border:1px solid #1e2130;border-radius:8px;padding:10px 12px;text-align:center;">'
+            f'<div style="font-size:18px;font-weight:700;color:{fg};font-family:IBM Plex Mono,monospace;">{float(v):.2f}</div>'
+            f'<div style="font-size:10px;color:#7a8599;text-transform:uppercase;letter-spacing:.08em;margin-top:3px;">{lbl}</div>'
+            f'</div>'
+            for lbl, v in sub_rows
         )
-        hot_html = '<span class="intel-hot">🔥 HOT</span>' if is_hot else ""
+        sub_scores_html = f'<div style="display:flex;gap:8px;margin-bottom:16px;">{sub_html}</div>'
 
-        severity_badge_html = f'<span class="intel-badge {badge_cls}">{impact_lbl}</span>'
-
-        card_html = (
-            f'<div class="intel-feed-card">'
-            f'<div class="intel-accent {accent_cls}"></div>'
-            f'<div style="padding-left:12px;">'
-            f'<div class="intel-top">'
-            f'{severity_badge_html}'
-            f'{inc_type_html}'
-            f'{entity_html}'
-            f'{hot_html}'
-            f'</div>'
-            f'<div class="intel-title">{title}</div>'
-            f'<div class="intel-summary">{summary}</div>'
-            f'<div class="intel-footer">'
-            f'<span class="intel-source"><span class="intel-source-dot"></span>{source}</span>'
-            f'<span class="intel-time">{time_str}</span>'
-            f'</div>'
-            f'</div>'
-            f'</div>'
+    # keywords html
+    kw_html = ""
+    if keywords:
+        kw_tags = "".join(
+            f'<span style="font-size:11px;padding:3px 10px;border-radius:6px;'
+            f'border:1px solid #1e2130;color:#7a8599;background:#0d1022;">{k}</span>'
+            for k in keywords[:12]
         )
-        st.markdown(card_html, unsafe_allow_html=True)
+        kw_html = f'<div style="margin-bottom:16px;"><div style="font-size:11px;font-weight:600;color:#7a8599;text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;">Keywords</div><div style="display:flex;gap:6px;flex-wrap:wrap;">{kw_tags}</div></div>'
+
+    url_html = ""
+    if url:
+        url_html = f'<a href="{url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:#4f8ef7;font-size:13px;text-decoration:none;font-weight:500;">🔗 View Original Source</a>'
+
+    # meta row items
+    meta_items = []
+    if inc_date:  meta_items.append(("📅 Incident Date",  inc_date))
+    if pub_date:  meta_items.append(("🗓 Published",       pub_date))
+    if source:    meta_items.append(("📰 Source",          source))
+    if country:   meta_items.append(("🌏 Country",         country))
+    if entity:    meta_items.append(("🏢 Entity Affected", entity))
+    if inc_type:  meta_items.append(("⚡ Incident Type",   inc_type))
+
+    meta_html = "".join(
+        f'<div style="background:#0d1022;border:1px solid #1e2130;border-radius:8px;padding:10px 14px;">'
+        f'<div style="font-size:10px;color:#7a8599;text-transform:uppercase;letter-spacing:.09em;margin-bottom:4px;font-weight:600;">{label}</div>'
+        f'<div style="font-size:13px;color:#e8ecf4;font-weight:500;">{value}</div>'
+        f'</div>'
+        for label, value in meta_items
+    )
+    meta_grid = f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:16px;">{meta_html}</div>' if meta_html else ""
+
+    # IQ Analysis block (like the screenshot)
+    analysis_html = ""
+    if summary:
+        analysis_html = f"""
+        <div style="background:#0d1535;border:1px solid #1a3a6e;border-radius:10px;padding:16px 18px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <span style="font-size:16px;">🔍</span>
+                <span style="font-size:13px;font-weight:700;color:#4f8ef7;letter-spacing:.04em;">Analysis</span>
+            </div>
+            <div style="font-size:13.5px;color:#b0bccf;line-height:1.75;">{summary}</div>
+        </div>"""
+
+    cat_badge  = f'<span style="background:{_hex_to_rgba(cat_color,0.15)};color:{cat_color};font-size:11px;font-weight:700;font-family:IBM Plex Mono,monospace;padding:3px 10px;border-radius:100px;text-transform:uppercase;">{cat}</span>' if cat else ""
+    sev_badge  = f'<span style="background:{bg};color:{fg};font-size:11px;font-weight:700;font-family:IBM Plex Mono,monospace;padding:3px 10px;border-radius:100px;text-transform:uppercase;">{sev_key.upper()}</span>'
+
+    st.markdown(f"""
+    <div style="background:#131829;border:1px solid {fg};border-top:3px solid {fg};
+                border-radius:12px;padding:24px 28px;margin:4px 0 16px;
+                box-shadow:0 4px 24px {fg}18;position:relative;">
+
+        <!-- Close hint -->
+        <div style="position:absolute;top:14px;right:18px;font-size:11px;color:#4a5568;
+                    font-family:IBM Plex Mono,monospace;cursor:pointer;">
+            click card again to close ✕
+        </div>
+
+        <!-- Header -->
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+            {sev_badge}{cat_badge}
+        </div>
+        <div style="font-size:19px;font-weight:700;color:#e8ecf4;line-height:1.4;margin-bottom:16px;padding-right:100px;">
+            {title}
+        </div>
+
+        <!-- Risk score bar -->
+        {score_html}
+
+        <!-- Sub-score tiles -->
+        {sub_scores_html}
+
+        <!-- Meta grid -->
+        {meta_grid}
+
+        <!-- Analysis block -->
+        {analysis_html}
+
+        <!-- Keywords -->
+        {kw_html}
+
+        <!-- Source link -->
+        <div style="padding-top:8px;border-top:1px solid #1e2130;">
+            {url_html}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  PAGE 1 — CYBER NEWS
-# ══════════════════════════════════════════════════════════════════════════════
+
 def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -802,7 +963,7 @@ def page_ransomware():
                     <div style="flex:1;background:#21262d;border-radius:4px;height:8px;">
                         <div style="width:{pct}%;background:{color};height:8px;border-radius:4px;"></div>
                     </div>
-                    <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;
+                    <span style="font-family:IBM Plex Mono,monospace;font-size:12px;
                                  color:#8b949e;min-width:72px;text-align:right;">
                         {int(row['count']):,} ({pct}%)
                     </span>
@@ -871,7 +1032,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
