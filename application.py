@@ -679,37 +679,141 @@ def _render_detail_panel(row: "pd.Series", cols: dict, sev_key: str, fg: str, bg
     st.markdown(f"""
     <div style="background:#131829;border:1px solid {fg};border-top:3px solid {fg};
                 border-radius:12px;padding:24px 28px;margin:4px 0 16px;
-                box-shadow:0 4px 24px {fg}18;position:relative;">
-
-        <!-- Header -->
+                box-shadow:0 4px 24px {fg}18;">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
             {sev_badge}{cat_badge}
         </div>
-        <div style="font-size:19px;font-weight:700;color:#e8ecf4;line-height:1.4;margin-bottom:16px;padding-right:100px;">
+        <div style="font-size:19px;font-weight:700;color:#e8ecf4;line-height:1.4;margin-bottom:16px;">
             {title}
         </div>
-
-        <!-- Risk score bar -->
         {score_html}
-
-        <!-- Sub-score tiles -->
         {sub_scores_html}
-
-        <!-- Meta grid -->
         {meta_grid}
-
-        <!-- Analysis block -->
         {analysis_html}
-
-        <!-- Keywords -->
         {kw_html}
-
-        <!-- Source link -->
-        <div style="padding-top:8px;border-top:1px solid #1e2130;">
-            {url_html}
-        </div>
+        <div style="padding-top:8px;border-top:1px solid #1e2130;">{url_html}</div>
     </div>
     """, unsafe_allow_html=True)
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTOR CHART  (req #2)
+# ══════════════════════════════════════════════════════════════════════════════
+def _render_sector_chart(df: pd.DataFrame):
+    sector_col = next((c for c in ("sector","industry","vertical") if c in df.columns), None)
+    # fallback: derive from category
+    if not sector_col and "category" in df.columns:
+        sector_col = "category"
+    if not sector_col or df[sector_col].dropna().empty:
+        st.caption("No sector data available")
+        return
+    counts = df[sector_col].value_counts().head(12).reset_index()
+    counts.columns = ["Sector", "Count"]
+    colors = ["#4f8ef7","#3ecf8e","#f76c6c","#f7a94f","#a78bfa",
+              "#34d399","#fb923c","#60a5fa","#f472b6","#38bdf8","#818cf8","#4ade80"]
+    fig = go.Figure(go.Bar(
+        x=counts["Count"], y=counts["Sector"], orientation="h",
+        marker=dict(color=colors[:len(counts)]),
+        text=counts["Count"], textposition="outside",
+        textfont=dict(color="#7a8599", size=11),
+        hovertemplate="<b>%{y}</b>: %{x}<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Highest Attacked Sectors",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#7a8599", size=12),
+        title_font=dict(color="#e8ecf4", size=13),
+        margin=dict(l=10,r=40,t=36,b=10), height=340,
+        xaxis=dict(gridcolor="#1e2130", zerolinecolor="#1e2130"),
+        yaxis=dict(categoryorder="total ascending",
+                   tickfont=dict(color="#e8ecf4", size=11)),
+        showlegend=False,
+    )
+    st.plotly_chart(fig, width="stretch")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LINKED CATEGORY → INCIDENT TYPE CHART  (req #5)
+#  Category gets a base colour; each incident_type under it gets a gradient shade
+# ══════════════════════════════════════════════════════════════════════════════
+def _render_linked_cat_type_chart(df: pd.DataFrame):
+    if "category" not in df.columns:
+        return
+    inc_type_col = next((c for c in ("incident_type","type","attack_type") if c in df.columns), None)
+
+    # ── LEFT: category bar ────────────────────────────────────────────────────
+    cat_counts = df["category"].value_counts().head(10).reset_index()
+    cat_counts.columns = ["Category","Count"]
+    cat_colors = [_get_category_color(c) for c in cat_counts["Category"]]
+
+    fig_cat = go.Figure(go.Bar(
+        x=cat_counts["Count"], y=cat_counts["Category"], orientation="h",
+        marker=dict(color=cat_colors),
+        text=cat_counts["Count"], textposition="outside",
+        textfont=dict(color="#7a8599", size=11),
+        hovertemplate="<b>%{y}</b>: %{x}<extra></extra>",
+    ))
+    fig_cat.update_layout(
+        title="Incidents by Category",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#7a8599", size=12),
+        title_font=dict(color="#e8ecf4", size=13),
+        margin=dict(l=10,r=40,t=36,b=10), height=340,
+        xaxis=dict(gridcolor="#1e2130", zerolinecolor="#1e2130"),
+        yaxis=dict(categoryorder="total ascending",
+                   tickfont=dict(color="#e8ecf4", size=11)),
+        showlegend=False,
+    )
+
+    # ── RIGHT: incident_type bar, coloured as gradient of its parent category ─
+    c1, c2 = st.columns(2)
+    with c1:
+        st.plotly_chart(fig_cat, width="stretch")
+
+    with c2:
+        if not inc_type_col or df[inc_type_col].dropna().empty:
+            st.caption("No incident type data")
+            return
+
+        # For each incident_type, find most common parent category → assign gradient colour
+        type_cat = (
+            df.dropna(subset=[inc_type_col, "category"])
+              .groupby(inc_type_col)["category"]
+              .agg(lambda x: x.value_counts().idxmax())
+              .reset_index()
+        )
+        type_cat.columns = ["IncidentType", "ParentCategory"]
+
+        type_counts = df[inc_type_col].value_counts().head(10).reset_index()
+        type_counts.columns = ["IncidentType","Count"]
+        type_counts = type_counts.merge(type_cat, on="IncidentType", how="left")
+
+        # Each incident type gets a lightened version of its parent category colour
+        type_colors = []
+        for _, row in type_counts.iterrows():
+            base = _get_category_color(str(row.get("ParentCategory","")))
+            type_colors.append(_lighten_hex(base, 0.35))
+
+        fig_type = go.Figure(go.Bar(
+            x=type_counts["Count"], y=type_counts["IncidentType"], orientation="h",
+            marker=dict(color=type_colors),
+            text=type_counts["Count"], textposition="outside",
+            textfont=dict(color="#7a8599", size=11),
+            hovertemplate="<b>%{y}</b>: %{x}<extra></extra>",
+        ))
+        fig_type.update_layout(
+            title="Incidents by Type  <span style='font-size:11px;color:#7a8599'>(colour = parent category)</span>",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#7a8599", size=12),
+            title_font=dict(color="#e8ecf4", size=13),
+            margin=dict(l=10,r=40,t=36,b=10), height=340,
+            xaxis=dict(gridcolor="#1e2130", zerolinecolor="#1e2130"),
+            yaxis=dict(categoryorder="total ascending",
+                       tickfont=dict(color="#e8ecf4", size=11)),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_type, width="stretch")
 
 
 
@@ -717,7 +821,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -801,46 +905,53 @@ def page_cyber_news():
 
     k1, k2, k3, k4, k5 = st.columns(5)
     kpi_row([
-        (k1, total_incidents,    "Total Incidents",    f"+{new_this_week} this week", "up"),
+        (k1, total_incidents,    "Total News Crawled", f"+{new_this_week} this week", "up"),
         (k2, total_sources,      "Crawled Sources",    "Unique domains",              ""),
         (k3, critical_count,     "Critical Incidents", "Needs attention",             "warn" if critical_count else ""),
         (k4, countries_affected, "Countries Affected", "Unique nations",              ""),
         (k5, new_this_week,      "New This Week",      "Last 7 days",                 "up"),
     ])
 
+    # ── Search bar ───────────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>Search</div>", unsafe_allow_html=True)
+    search_q = st.text_input(
+        "search_bar",
+        placeholder="🔍  Search by keyword, title, entity, category, incident type…",
+        label_visibility="collapsed",
+        key="feed_search",
+    )
+
     # ── Charts ────────────────────────────────────────────────────────────────
     st.markdown("<div class='section-header'>Incident Overview</div>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1: render_incidents_by_category(df)
-    with c2: render_incidents_by_type(df)
+    _render_linked_cat_type_chart(df)
 
-    st.markdown("<div class='section-header'>Trends & Impact</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>Highest Attacked Sectors</div>", unsafe_allow_html=True)
+    sc1, sc2 = st.columns([2, 1])
+    with sc1: _render_sector_chart(df)
+    with sc2: render_impact_distribution(df)
+
+    st.markdown("<div class='section-header'>Trends & Geography</div>", unsafe_allow_html=True)
     c3, c4 = st.columns([2, 1])
     with c3: render_timeline(df)
-    with c4: render_impact_distribution(df)
+    with c4: render_incidents_by_country(df)
 
-    st.markdown("<div class='section-header'>Geography & Sources</div>", unsafe_allow_html=True)
-    c5, c6 = st.columns([2, 1])
-    with c5: render_incidents_by_country(df)
-    with c6: render_source_breakdown(df)
+    st.markdown("<div class='section-header'>Sources & Keywords</div>", unsafe_allow_html=True)
+    sw1, sw2 = st.columns(2)
+    with sw1: render_source_breakdown(df)
+    with sw2: render_wordcloud(df, column="relevant_keywords", title="Relevant Keywords")
 
-    st.markdown("<div class='section-header'>Text Insights</div>", unsafe_allow_html=True)
-    w1, w2 = st.columns(2)
-    with w1: render_wordcloud(df, column="summary",           title="Summary Keywords")
-    with w2: render_wordcloud(df, column="relevant_keywords", title="Relevant Keywords")
-
-    # ── Live Intelligence Feed ────────────────────────────────────────────────
-    st.markdown("<div class='section-header'>Live Intelligence Feed</div>", unsafe_allow_html=True)
-
-    # Impact filter buttons (All / Critical / High / Medium / Low)
-    if "feed_impact_active" not in st.session_state:
-        st.session_state["feed_impact_active"] = "All"
-
-    active_level = st.session_state["feed_impact_active"]
+    # ── Cyber News Feed ───────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>Cyber News Feed</div>", unsafe_allow_html=True)
 
     feed_df = df.copy()
-    if active_level != "All" and "impact" in feed_df.columns:
-        feed_df = feed_df[feed_df["impact"].str.lower() == active_level.lower()]
+    if search_q.strip():
+        q = search_q.strip().lower()
+        mask = pd.Series(False, index=feed_df.index)
+        for col in ("title","summary","category","incident_type","entity_affected",
+                    "relevant_keywords","country","source"):
+            if col in feed_df.columns:
+                mask |= feed_df[col].fillna("").astype(str).str.lower().str.contains(q, regex=False)
+        feed_df = feed_df[mask]
 
     total_feed = len(feed_df)
 
@@ -851,7 +962,7 @@ def page_cyber_news():
         f"<span style='width:8px;height:8px;border-radius:50%;background:#ff6b6b;"
         f"display:inline-block;animation:blink 1.8s ease-in-out infinite;flex-shrink:0;'></span>"
         f"<span style='color:#f0f6fc;font-weight:700;text-transform:uppercase;letter-spacing:.12em;'>"
-        f"Live Intelligence Feed</span>"
+        f"Cyber News Feed</span>"
         f"<span style='background:#161b22;border:1px solid #21262d;border-radius:100px;"
         f"padding:2px 10px;font-size:10px;'>{total_feed} items</span>"
         f"</div>",
@@ -1097,7 +1208,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
