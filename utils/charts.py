@@ -58,7 +58,7 @@ def render_incidents_by_category(df: pd.DataFrame):
     fig.update_layout(yaxis=dict(categoryorder="total ascending"), **DARK)
     fig.update_xaxes(**AXIS)
     fig.update_yaxes(**AXIS)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_incidents_by_type(df: pd.DataFrame):
@@ -71,7 +71,7 @@ def render_incidents_by_type(df: pd.DataFrame):
     fig = px.pie(counts, names="Type", values="Count", hole=0.55)
     fig.update_traces(textposition="outside", textfont_size=11)
     fig.update_layout(**DARK)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_timeline(df: pd.DataFrame):
@@ -89,7 +89,7 @@ def render_timeline(df: pd.DataFrame):
         fig = px.area(agg, x="week", y="Count")
     fig.update_traces(line_width=1.5)
     _apply_dark(fig)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_impact_distribution(df: pd.DataFrame):
@@ -108,7 +108,7 @@ def render_impact_distribution(df: pd.DataFrame):
     fig = px.funnel(counts, x="Count", y="Impact",
                     color="Impact", color_discrete_map=color_map)
     fig.update_layout(**DARK)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_incidents_by_country(df: pd.DataFrame):
@@ -134,7 +134,7 @@ def render_incidents_by_country(df: pd.DataFrame):
         showocean=True, oceancolor="#0d1117",
     )
     fig.update_layout(**DARK, height=320)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_source_breakdown(df: pd.DataFrame):
@@ -148,7 +148,7 @@ def render_source_breakdown(df: pd.DataFrame):
     fig.update_layout(yaxis=dict(categoryorder="total ascending"), **DARK)
     fig.update_xaxes(**AXIS)
     fig.update_yaxes(**AXIS)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_wordcloud(df: pd.DataFrame, column: str, title: str):
@@ -189,7 +189,7 @@ def render_wordcloud(df: pd.DataFrame, column: str, title: str):
         ax.set_facecolor("#0d1117")
         ax.imshow(wc, interpolation="bilinear")
         ax.axis("off")
-        st.pyplot(fig, use_container_width=True)
+        st.pyplot(fig, width='stretch')
         plt.close(fig)
 
     except ImportError:
@@ -205,4 +205,4 @@ def render_wordcloud(df: pd.DataFrame, column: str, title: str):
         fig = px.bar(wdf, x="Count", y="Word", orientation="h",
                      color_discrete_sequence=["#388bfd"])
         fig.update_layout(yaxis=dict(categoryorder="total ascending"), **DARK)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
