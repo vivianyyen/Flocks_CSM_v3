@@ -677,24 +677,26 @@ def _render_detail_panel(row: "pd.Series", cols: dict, sev_key: str, fg: str, bg
     cat_badge  = f'<span style="background:{_hex_to_rgba(cat_color,0.15)};color:{cat_color};font-size:11px;font-weight:700;font-family:IBM Plex Mono,monospace;padding:3px 10px;border-radius:100px;text-transform:uppercase;">{cat}</span>' if cat else ""
     sev_badge  = f'<span style="background:{bg};color:{fg};font-size:11px;font-weight:700;font-family:IBM Plex Mono,monospace;padding:3px 10px;border-radius:100px;text-transform:uppercase;">{sev_key.upper()}</span>'
 
-    st.markdown(f"""
-    <div style="background:#131829;border:1px solid {fg};border-top:3px solid {fg};
-                border-radius:12px;padding:24px 28px;margin:4px 0 16px;
-                box-shadow:0 4px 24px {fg}18;">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-            {sev_badge}{cat_badge}
-        </div>
-        <div style="font-size:19px;font-weight:700;color:#e8ecf4;line-height:1.4;margin-bottom:16px;">
-            {title}
-        </div>
-        {score_html}
-        {sub_scores_html}
-        {meta_grid}
-        {analysis_html}
-        {kw_html}
-        <div style="padding-top:8px;border-top:1px solid #1e2130;">{url_html}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Build HTML via concatenation — avoids f-string brace conflicts from CSS in sub-vars
+    panel_html = (
+        f'<div style="background:#131829;border:1px solid {fg};border-top:3px solid {fg};'
+        f'border-radius:12px;padding:24px 28px;margin:4px 0 16px;'
+        f'box-shadow:0 4px 24px {fg}18;">'
+        f'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">'
+        + sev_badge + cat_badge +
+        f'</div>'
+        f'<div style="font-size:19px;font-weight:700;color:#e8ecf4;line-height:1.4;margin-bottom:16px;">'
+        + title +
+        f'</div>'
+        + score_html
+        + sub_scores_html
+        + meta_grid
+        + analysis_html
+        + kw_html
+        + f'<div style="padding-top:8px;border-top:1px solid #1e2130;">{url_html}</div>'
+        + '</div>'
+    )
+    st.markdown(panel_html, unsafe_allow_html=True)
 
 
 
@@ -822,7 +824,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -1209,7 +1211,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
