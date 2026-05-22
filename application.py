@@ -403,7 +403,7 @@ def _lighten_hex(hex_color: str, factor: float) -> str:
 
 
 def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
-    """Each card IS the button — click the card to open/close the detail panel."""
+    """Render news cards with st.markdown (so HTML renders), tiny invisible button for click."""
 
     SEV_FG     = {"critical":"#f76c6c","high":"#f7a94f","medium":"#4f8ef7","low":"#3ecf8e","unknown":"#7a8599"}
     SEV_BG     = {"critical":"#3d0f0f","high":"#2d1b0a","medium":"#0a1f2a","low":"#0a1f17","unknown":"#1c1c1c"}
@@ -438,37 +438,28 @@ def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
     if "intel_selected_idx" not in st.session_state:
         st.session_state["intel_selected_idx"] = None
 
-    # ── Inject CSS once: make each button look like a card, hide all chrome ──
+    # ── CSS: hide button chrome, make it overlay the card invisibly ──────────
     st.markdown("""
     <style>
-    /* Hide default button chrome for card buttons */
-    [data-testid="stButton"] > button.card-btn {
-        all: unset;
-        display: block;
-        width: 100%;
-        cursor: pointer;
-    }
-    div[data-card-btn] > div > button {
-        all: unset !important;
-        display: block !important;
+    .card-wrap { position: relative; margin-bottom: 6px; }
+    .card-wrap button {
+        position: absolute !important;
+        inset: 0 !important;
         width: 100% !important;
+        height: 100% !important;
+        opacity: 0 !important;
+        cursor: pointer !important;
+        z-index: 10 !important;
+        border: none !important;
+        background: transparent !important;
         padding: 0 !important;
         margin: 0 !important;
-        background: transparent !important;
-        border: none !important;
-        cursor: pointer !important;
     }
-    div[data-card-btn] > div > button:focus {
-        outline: none !important;
-        box-shadow: none !important;
-    }
-    div[data-card-btn] > div > button:hover {
-        background: transparent !important;
-        border: none !important;
-        color: inherit !important;
-    }
-    div[data-card-btn] > div {
-        width: 100%;
+    .card-wrap [data-testid="stButton"] {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -507,53 +498,49 @@ def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
         type_color = _lighten_hex(cat_color, 0.4) if cat else "#7a8599"
         is_selected = st.session_state["intel_selected_idx"] == i
 
-        # Badge HTML (used inside button label)
         hot_html  = '<span style="background:#f76c6c;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;letter-spacing:.1em;">🔥 HOT</span>' if is_hot else ""
-        cat_html  = (f'<span style="background:{_hex_to_rgba(cat_color,0.15)};color:{cat_color};'
-                     f'font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;text-transform:uppercase;">{cat}</span>'
+        cat_html  = (f'<span style="background:{_hex_to_rgba(cat_color,0.15)};color:{cat_color};font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;text-transform:uppercase;">{cat}</span>'
                      if cat and cat.lower() not in ("nan","none","") else "")
-        type_html = (f'<span style="background:{_hex_to_rgba(type_color,0.13)};color:{type_color};'
-                     f'font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;text-transform:uppercase;">{inc_type}</span>'
+        type_html = (f'<span style="background:{_hex_to_rgba(type_color,0.13)};color:{type_color};font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;text-transform:uppercase;">{inc_type}</span>'
                      if inc_type and inc_type.lower() not in ("nan","none","") else "")
 
-        selected_bg     = "#15192c" if is_selected else "#131829"
-        selected_border = fg        if is_selected else "#1e2130"
-        chevron_color   = fg        if is_selected else "#4a5568"
-        chevron         = "▾" if is_selected else "›"
+        sel_bg     = "#15192c"               if is_selected else "#131829"
+        sel_border = fg                      if is_selected else "#1e2130"
+        sel_shadow = f"0 0 16px {fg}33;"     if is_selected else ""
+        chevron    = "▾"                     if is_selected else "›"
+        chev_col   = fg                      if is_selected else "#4a5568"
 
-        # The entire card is one st.button with HTML as its label
+        # Rendered as HTML — will display correctly
         card_html = f"""
-<div style="background:{selected_bg};border:1px solid {selected_border};border-left:3px solid {border};
-            border-radius:10px;padding:14px 18px;margin-bottom:0px;text-align:left;width:100%;
-            box-sizing:border-box;{'box-shadow:0 0 18px ' + fg + '22;' if is_selected else ''}">
+<div class="card-wrap">
+  <div style="background:{sel_bg};border:1px solid {sel_border};border-left:3px solid {border};
+              border-radius:10px;padding:14px 18px;box-shadow:{sel_shadow};user-select:none;">
     <div style="display:flex;align-items:flex-start;gap:10px;">
-        <div style="flex:1;min-width:0;overflow:hidden;">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px;">
-                <span style="background:{bg};color:{fg};font-size:9px;font-weight:700;
-                             padding:1px 8px;border-radius:100px;text-transform:uppercase;">{sev_key.upper()}</span>
-                {cat_html}{type_html}{hot_html}
-                <span style="margin-left:auto;font-size:10px;color:#4a5568;">{time_str}</span>
-            </div>
-            <div style="font-size:14px;font-weight:600;color:#e8ecf4;line-height:1.4;margin-bottom:5px;
-                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{title}</div>
-            <div style="font-size:12px;color:#7a8599;line-height:1.5;
-                        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{short_sum}</div>
-            <div style="font-size:10px;color:#4a5568;margin-top:7px;">📰 {source}</div>
+      <div style="flex:1;min-width:0;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px;">
+          <span style="background:{bg};color:{fg};font-size:9px;font-weight:700;
+                       padding:1px 8px;border-radius:100px;text-transform:uppercase;">{sev_key.upper()}</span>
+          {cat_html}{type_html}{hot_html}
+          <span style="margin-left:auto;font-size:10px;color:#4a5568;">{time_str}</span>
         </div>
-        <div style="flex-shrink:0;font-size:18px;color:{chevron_color};padding-top:2px;">{chevron}</div>
+        <div style="font-size:14px;font-weight:600;color:#e8ecf4;line-height:1.4;margin-bottom:5px;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{title}</div>
+        <div style="font-size:12px;color:#7a8599;line-height:1.5;
+                    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{short_sum}</div>
+        <div style="font-size:10px;color:#4a5568;margin-top:7px;">📰 {source}</div>
+      </div>
+      <div style="flex-shrink:0;font-size:18px;color:{chev_col};padding-top:2px;">{chevron}</div>
     </div>
-</div>"""
+  </div>"""
 
-        # Wrap in a div we can target with CSS to nuke the button chrome
-        st.markdown(f'<div data-card-btn="{i}" style="margin-bottom:6px;">', unsafe_allow_html=True)
-        clicked = st.button(card_html, key=f"card_{i}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if clicked:
+        st.markdown(card_html, unsafe_allow_html=True)
+        # Invisible button sits on top of the card via CSS absolute positioning
+        if st.button("click", key=f"card_{i}"):
             st.session_state["intel_selected_idx"] = None if is_selected else i
             st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
-        # Detail panel opens right below clicked card
+        # Detail panel expands right below the clicked card
         if is_selected:
             _render_detail_panel(row, {
                 "title_col": title_col, "summary_col": summary_col,
@@ -730,7 +717,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -1110,7 +1097,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
