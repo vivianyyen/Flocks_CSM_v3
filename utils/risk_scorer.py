@@ -219,11 +219,11 @@ def compute_impact_score(
 
     total = W1_SECTOR * s1 + W2_COUNTRY * s2 + W3_ATTACK_TYPE * s3 + W4_DATA_EXPOSURE * s4
 
-    if total >= 0.70:
+    if total > 0.8:
         label = "Critical"
-    elif total >= 0.50:
+    elif total > 0.6:
         label = "High"
-    elif total >= 0.30:
+    elif total > 0.4:
         label = "Medium"
     else:
         label = "Low"

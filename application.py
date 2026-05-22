@@ -820,11 +820,141 @@ def _render_linked_cat_type_chart(df: pd.DataFrame):
 
 
 
+def _render_impact_level_chart(df: pd.DataFrame):
+    """Vertical bar chart: frequency of incidents by impact level (based on normalized risk_score)."""
+    if "risk_score" not in df.columns:
+        st.caption("No risk score data available")
+        return
+
+    def _classify(score):
+        try:
+            s = float(score)
+        except (ValueError, TypeError):
+            return "Unknown"
+        if s > 0.8:   return "Critical"
+        if s > 0.6:   return "High"
+        if s > 0.4:   return "Medium"
+        return "Low"
+
+    level_order  = ["Critical", "High", "Medium", "Low"]
+    level_colors = {"Critical": "#f76c6c", "High": "#f7a94f", "Medium": "#4f8ef7", "Low": "#3ecf8e"}
+
+    counts = df["risk_score"].apply(_classify).value_counts().reindex(level_order, fill_value=0).reset_index()
+    counts.columns = ["Impact Level", "Count"]
+    colors = [level_colors[lv] for lv in counts["Impact Level"]]
+
+    fig = go.Figure(go.Bar(
+        x=counts["Impact Level"],
+        y=counts["Count"],
+        marker=dict(color=colors, opacity=0.9),
+        text=counts["Count"],
+        textposition="outside",
+        textfont=dict(color="#e8ecf4", size=12, family="IBM Plex Mono"),
+        hovertemplate="<b>%{x}</b><br>Count: %{y}<extra></extra>",
+        width=0.5,
+    ))
+    fig.update_layout(
+        title=dict(
+            text="Risk Score Distribution  <span style='font-size:11px;color:#7a8599'>"
+                 "(Critical >0.8 · High 0.6-0.8 · Medium 0.4-0.6 · Low ≤0.4)</span>",
+            font=dict(color="#e8ecf4", size=13),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#7a8599", size=12),
+        margin=dict(l=10, r=20, t=48, b=10),
+        height=300,
+        xaxis=dict(
+            categoryorder="array", categoryarray=level_order,
+            tickfont=dict(color="#e8ecf4", size=13, family="IBM Plex Mono"),
+            gridcolor="rgba(0,0,0,0)", zeroline=False,
+        ),
+        yaxis=dict(
+            gridcolor="#1e2130", zerolinecolor="#1e2130",
+            tickfont=dict(color="#7a8599", size=11),
+        ),
+        showlegend=False,
+        bargap=0.35,
+    )
+    st.plotly_chart(fig, width="stretch")
+
+
+def _render_trending_news(df: pd.DataFrame, max_items: int = 5):
+    """Display critical-level news as a trending carousel strip."""
+    if "risk_score" not in df.columns:
+        return
+
+    crit_df = df[df["risk_score"].apply(
+        lambda s: (float(s) > 0.8) if str(s) not in ("", "nan", "None") else False
+    )].copy()
+
+    date_col = next((c for c in ("incident_date", "publication_date") if c in crit_df.columns), None)
+    if date_col:
+        crit_df = crit_df.sort_values(date_col, ascending=False)
+    crit_df = crit_df.head(max_items).reset_index(drop=True)
+
+    if crit_df.empty:
+        return
+
+    title_col   = next((c for c in ("title","headline","name")        if c in crit_df.columns), None)
+    source_col  = next((c for c in ("source","origin","feed")         if c in crit_df.columns), None)
+    cat_col     = "category" if "category" in crit_df.columns else None
+    risk_col    = "risk_score"
+
+    now = now_my()
+
+    cards_html = ""
+    for _, row in crit_df.iterrows():
+        title  = _strip_html(str(row.get(title_col,  "Untitled") if title_col  else "Untitled"))
+        source = _strip_html(str(row.get(source_col, "Unknown")  if source_col else "Unknown"))
+        cat    = str(row.get(cat_col, "") if cat_col else "").strip()
+        score  = float(row.get(risk_col, 0))
+
+        time_str = ""
+        if date_col and pd.notna(row.get(date_col)):
+            try:
+                mins = int((now - row[date_col]).total_seconds() / 60)
+                if   mins < 1:    time_str = "just now"
+                elif mins < 60:   time_str = f"{mins}m ago"
+                elif mins < 1440: time_str = f"{mins//60}h ago"
+                else:             time_str = f"{mins//1440}d ago"
+            except: pass
+
+        short_title = title[:80] + "…" if len(title) > 80 else title
+        cat_color   = _get_category_color(cat)
+
+        cards_html += f"""
+<div style="flex:0 0 280px;background:#1a0a0a;border:1px solid #f76c6c44;
+            border-left:3px solid #f76c6c;border-radius:10px;padding:14px 16px;
+            display:flex;flex-direction:column;gap:8px;cursor:default;">
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+    <span style="background:#3d0f0f;color:#f76c6c;font-size:9px;font-weight:700;
+                 padding:1px 8px;border-radius:100px;text-transform:uppercase;
+                 font-family:'IBM Plex Mono',monospace;">🔥 CRITICAL</span>
+    {'<span style="background:' + _hex_to_rgba(cat_color,0.15) + ';color:' + cat_color + ';font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;text-transform:uppercase;">' + cat + '</span>' if cat and cat.lower() not in ('nan','none','') else ''}
+    <span style="margin-left:auto;font-size:10px;color:#4a5568;font-family:'IBM Plex Mono',monospace;">{time_str}</span>
+  </div>
+  <div style="font-size:13px;font-weight:600;color:#f0f0f0;line-height:1.4;">{short_title}</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;">
+    <span style="font-size:10px;color:#7a8599;">📰 {source}</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:#f76c6c;">
+      {score:.3f}
+    </span>
+  </div>
+</div>"""
+
+    st.markdown(f"""
+<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 2px 12px;
+            scrollbar-width:thin;scrollbar-color:#21262d transparent;">
+  {cards_html}
+</div>
+""", unsafe_allow_html=True)
+
+
 def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -896,8 +1026,12 @@ def page_cyber_news():
     # ── KPIs ──────────────────────────────────────────────────────────────────
     total_incidents    = len(df)
     total_sources      = df["source"].nunique() if "source" in df.columns else 0
-    critical_count     = len(df[df["impact"].str.lower() == "critical"]) \
-                         if "impact" in df.columns else 0
+    critical_count     = int((df["risk_score"].apply(
+                             lambda s: float(s) > 0.8 if str(s) not in ("","nan","None") else False
+                         )).sum()) if "risk_score" in df.columns else (
+                             len(df[df["impact"].str.lower() == "critical"])
+                             if "impact" in df.columns else 0
+                         )
     countries_affected = df.loc[
         df["country"].notna() & (df["country"] != "Unknown"), "country"
     ].nunique() if "country" in df.columns else 0
@@ -915,7 +1049,7 @@ def page_cyber_news():
         (k5, new_this_week,      "New This Week",      "Last 7 days",                 "up"),
     ])
 
-    # ── Search bar ───────────────────────────────────────────────────────────
+    # ── Search bar (above Cyber News Feed) ───────────────────────────────────
     st.markdown("<div class='section-header'>Search</div>", unsafe_allow_html=True)
     search_q = st.text_input(
         "search_bar",
@@ -928,10 +1062,15 @@ def page_cyber_news():
     st.markdown("<div class='section-header'>Incident Overview</div>", unsafe_allow_html=True)
     _render_linked_cat_type_chart(df)
 
+    # ── Impact Level Distribution ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>Impact Level Distribution</div>", unsafe_allow_html=True)
+    il1, il2 = st.columns([2, 1])
+    with il1: _render_impact_level_chart(df)
+    with il2: render_impact_distribution(df)
+
     st.markdown("<div class='section-header'>Highest Attacked Sectors</div>", unsafe_allow_html=True)
     sc1, sc2 = st.columns([2, 1])
     with sc1: _render_sector_chart(df)
-    with sc2: render_impact_distribution(df)
 
     st.markdown("<div class='section-header'>Trends & Geography</div>", unsafe_allow_html=True)
     c3, c4 = st.columns([2, 1])
@@ -942,6 +1081,21 @@ def page_cyber_news():
     sw1, sw2 = st.columns(2)
     with sw1: render_source_breakdown(df)
     with sw2: render_wordcloud(df, column="relevant_keywords", title="Relevant Keywords")
+
+    # ── Trending Critical News ────────────────────────────────────────────────
+    if "risk_score" in df.columns:
+        crit_count = int((df["risk_score"].apply(
+            lambda s: float(s) > 0.8 if str(s) not in ("", "nan", "None") else False
+        )).sum())
+        if crit_count:
+            st.markdown(
+                f"<div class='section-header'>🔥 Trending — Critical Incidents "
+                f"<span style='font-size:11px;background:#3d0f0f;color:#f76c6c;"
+                f"border-radius:100px;padding:2px 10px;margin-left:8px;'>{crit_count} critical</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            _render_trending_news(df, max_items=6)
 
     # ── Cyber News Feed ───────────────────────────────────────────────────────
     st.markdown("<div class='section-header'>Cyber News Feed</div>", unsafe_allow_html=True)
@@ -1211,7 +1365,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
