@@ -403,27 +403,26 @@ def _lighten_hex(hex_color: str, factor: float) -> str:
 
 
 def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
-    """Render clickable news cards. Clicking opens a full detail panel below the list."""
+    """Each card IS the button — click the card to open/close the detail panel."""
 
-    SEV_FG = {"critical":"#f76c6c","high":"#f7a94f","medium":"#4f8ef7","low":"#3ecf8e","unknown":"#7a8599"}
-    SEV_BG = {"critical":"#3d0f0f","high":"#2d1b0a","medium":"#0a1f2a","low":"#0a1f17","unknown":"#1c1c1c"}
+    SEV_FG     = {"critical":"#f76c6c","high":"#f7a94f","medium":"#4f8ef7","low":"#3ecf8e","unknown":"#7a8599"}
+    SEV_BG     = {"critical":"#3d0f0f","high":"#2d1b0a","medium":"#0a1f2a","low":"#0a1f17","unknown":"#1c1c1c"}
     SEV_BORDER = {"critical":"#f76c6c","high":"#f7a94f","medium":"#4f8ef7","low":"#3ecf8e","unknown":"#484f58"}
 
-    # Column resolution — uses your exact DB field names with fallbacks
-    title_col     = next((c for c in ("title","headline","name")                          if c in df.columns), None)
-    summary_col   = next((c for c in ("summary","description","content")                  if c in df.columns), None)
-    source_col    = next((c for c in ("source","origin","feed")                           if c in df.columns), None)
-    severity_col  = next((c for c in ("severity",)                                        if c in df.columns), None)
-    impact_col    = next((c for c in ("impact","criticality")                             if c in df.columns), None)
-    inc_type_col  = next((c for c in ("incident_type","type","attack_type")               if c in df.columns), None)
-    entity_col    = next((c for c in ("entity_affected","entity","target","victim")       if c in df.columns), None)
-    date_col      = next((c for c in ("incident_date","publication_date","date")          if c in df.columns), None)
-    pub_date_col  = "publication_date" if "publication_date" in df.columns else None
-    inc_date_col  = "incident_date"    if "incident_date"    in df.columns else None
-    cat_col       = "category"         if "category"         in df.columns else None
-    country_col   = "country"          if "country"          in df.columns else None
-    url_col       = next((c for c in ("url","link","source_url")                          if c in df.columns), None)
-    kw_col        = next((c for c in ("relevant_keywords","keywords","tags")              if c in df.columns), None)
+    title_col    = next((c for c in ("title","headline","name")                      if c in df.columns), None)
+    summary_col  = next((c for c in ("summary","description","content")              if c in df.columns), None)
+    source_col   = next((c for c in ("source","origin","feed")                       if c in df.columns), None)
+    severity_col = next((c for c in ("severity",)                                    if c in df.columns), None)
+    impact_col   = next((c for c in ("impact","criticality")                         if c in df.columns), None)
+    inc_type_col = next((c for c in ("incident_type","type","attack_type")           if c in df.columns), None)
+    entity_col   = next((c for c in ("entity_affected","entity","target","victim")   if c in df.columns), None)
+    date_col     = next((c for c in ("incident_date","publication_date","date")      if c in df.columns), None)
+    pub_date_col = "publication_date" if "publication_date" in df.columns else None
+    inc_date_col = "incident_date"    if "incident_date"    in df.columns else None
+    cat_col      = "category"         if "category"         in df.columns else None
+    country_col  = "country"          if "country"          in df.columns else None
+    url_col      = next((c for c in ("url","link","source_url")                      if c in df.columns), None)
+    kw_col       = next((c for c in ("relevant_keywords","keywords","tags")          if c in df.columns), None)
 
     feed_df = df.copy()
     if date_col:
@@ -436,24 +435,57 @@ def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
 
     now = now_my()
 
-    # ── Session state for selected card ──────────────────────────────────────
     if "intel_selected_idx" not in st.session_state:
         st.session_state["intel_selected_idx"] = None
 
-    # ── News list ─────────────────────────────────────────────────────────────
-    for i, (_, row) in enumerate(feed_df.iterrows()):
-        sev_raw   = str(row.get(severity_col,"") if severity_col else "").strip().lower()
-        imp_raw   = str(row.get(impact_col,  "") if impact_col   else "").strip().lower()
-        sev_key   = sev_raw if sev_raw in SEV_FG else imp_raw if imp_raw in SEV_FG else "unknown"
-        fg        = SEV_FG[sev_key]
-        bg        = SEV_BG[sev_key]
-        border    = SEV_BORDER[sev_key]
+    # ── Inject CSS once: make each button look like a card, hide all chrome ──
+    st.markdown("""
+    <style>
+    /* Hide default button chrome for card buttons */
+    [data-testid="stButton"] > button.card-btn {
+        all: unset;
+        display: block;
+        width: 100%;
+        cursor: pointer;
+    }
+    div[data-card-btn] > div > button {
+        all: unset !important;
+        display: block !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        cursor: pointer !important;
+    }
+    div[data-card-btn] > div > button:focus {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    div[data-card-btn] > div > button:hover {
+        background: transparent !important;
+        border: none !important;
+        color: inherit !important;
+    }
+    div[data-card-btn] > div {
+        width: 100%;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-        title     = _strip_html(str(row.get(title_col,  "Untitled") if title_col  else "Untitled"))
-        summary   = _strip_html(str(row.get(summary_col,"")         if summary_col else ""))
-        source    = _strip_html(str(row.get(source_col, "Unknown")  if source_col  else "Unknown"))
-        cat       = str(row.get(cat_col,   "") if cat_col    else "").strip()
-        inc_type  = str(row.get(inc_type_col,"") if inc_type_col else "").strip()
+    for i, (_, row) in enumerate(feed_df.iterrows()):
+        sev_raw  = str(row.get(severity_col,"") if severity_col else "").strip().lower()
+        imp_raw  = str(row.get(impact_col,  "") if impact_col   else "").strip().lower()
+        sev_key  = sev_raw if sev_raw in SEV_FG else imp_raw if imp_raw in SEV_FG else "unknown"
+        fg       = SEV_FG[sev_key]
+        bg       = SEV_BG[sev_key]
+        border   = SEV_BORDER[sev_key]
+
+        title    = _strip_html(str(row.get(title_col,   "Untitled") if title_col   else "Untitled"))
+        summary  = _strip_html(str(row.get(summary_col, "")         if summary_col else ""))
+        source   = _strip_html(str(row.get(source_col,  "Unknown")  if source_col  else "Unknown"))
+        cat      = str(row.get(cat_col,     "") if cat_col      else "").strip()
+        inc_type = str(row.get(inc_type_col,"") if inc_type_col else "").strip()
 
         short_sum = summary[:160] + "…" if len(summary) > 160 else summary
 
@@ -461,10 +493,10 @@ def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
         if date_col and pd.notna(row.get(date_col)):
             try:
                 mins = int((now - row[date_col]).total_seconds() / 60)
-                if mins < 1:      time_str = "just now"
-                elif mins < 60:   time_str = f"{mins}m ago"
-                elif mins < 1440: time_str = f"{mins//60}h ago"
-                else:             time_str = f"{mins//1440}d ago"
+                if   mins < 1:     time_str = "just now"
+                elif mins < 60:    time_str = f"{mins}m ago"
+                elif mins < 1440:  time_str = f"{mins//60}h ago"
+                else:              time_str = f"{mins//1440}d ago"
             except: pass
 
         is_hot = (sev_key in ("critical","high") and date_col
@@ -475,52 +507,54 @@ def render_intel_feed(df: pd.DataFrame, max_items: int = 20):
         type_color = _lighten_hex(cat_color, 0.4) if cat else "#7a8599"
         is_selected = st.session_state["intel_selected_idx"] == i
 
-        # Card HTML — always rendered
-        selected_style = f"border-color:{fg};background:#15192c;box-shadow:0 0 18px {fg}22;" if is_selected else ""
-        hot_badge = ('<span style="background:#f76c6c;color:#fff;font-size:10px;font-weight:700;'
-                     'padding:2px 8px;border-radius:100px;font-family:IBM Plex Mono,monospace;'
-                     'letter-spacing:.1em;animation:blink 1.5s infinite;">🔥 HOT</span>'
-                     if is_hot else "")
-        cat_badge  = f'<span style="background:{_hex_to_rgba(cat_color,0.15)};color:{cat_color};font-size:10px;font-weight:600;font-family:IBM Plex Mono,monospace;padding:2px 9px;border-radius:100px;text-transform:uppercase;">{cat}</span>' if cat and cat.lower() not in ("nan","none","") else ""
-        type_badge = f'<span style="background:{_hex_to_rgba(type_color,0.13)};color:{type_color};font-size:10px;font-weight:600;font-family:IBM Plex Mono,monospace;padding:2px 9px;border-radius:100px;text-transform:uppercase;">{inc_type}</span>' if inc_type and inc_type.lower() not in ("nan","none","") else ""
+        # Badge HTML (used inside button label)
+        hot_html  = '<span style="background:#f76c6c;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;letter-spacing:.1em;">🔥 HOT</span>' if is_hot else ""
+        cat_html  = (f'<span style="background:{_hex_to_rgba(cat_color,0.15)};color:{cat_color};'
+                     f'font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;text-transform:uppercase;">{cat}</span>'
+                     if cat and cat.lower() not in ("nan","none","") else "")
+        type_html = (f'<span style="background:{_hex_to_rgba(type_color,0.13)};color:{type_color};'
+                     f'font-size:9px;font-weight:700;padding:1px 7px;border-radius:100px;text-transform:uppercase;">{inc_type}</span>'
+                     if inc_type and inc_type.lower() not in ("nan","none","") else "")
 
-        st.markdown(f"""
-        <div style="background:#131829;border:1px solid #1e2130;border-left:3px solid {border};
-                    border-radius:10px;padding:14px 18px;margin-bottom:6px;cursor:pointer;
-                    transition:all .18s ease;{selected_style}">
-            <div style="display:flex;align-items:flex-start;gap:14px;">
-                <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px;">
-                        <span style="background:{bg};color:{fg};font-size:10px;font-weight:700;
-                                     font-family:IBM Plex Mono,monospace;padding:2px 9px;
-                                     border-radius:100px;text-transform:uppercase;">{sev_key.upper()}</span>
-                        {cat_badge}{type_badge}{hot_badge}
-                        <span style="margin-left:auto;font-size:11px;color:#4a5568;font-family:IBM Plex Mono,monospace;">{time_str}</span>
-                    </div>
-                    <div style="font-size:14px;font-weight:600;color:#e8ecf4;line-height:1.45;margin-bottom:5px;
-                                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{title}</div>
-                    <div style="font-size:12.5px;color:#7a8599;line-height:1.55;margin-bottom:8px;
-                                display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{short_sum}</div>
-                    <div style="font-size:11px;color:#4a5568;font-family:IBM Plex Mono,monospace;">
-                        📰 {source}
-                    </div>
-                </div>
-                <div style="flex-shrink:0;font-size:18px;color:#4a5568;padding-top:2px;">›</div>
+        selected_bg     = "#15192c" if is_selected else "#131829"
+        selected_border = fg        if is_selected else "#1e2130"
+        chevron_color   = fg        if is_selected else "#4a5568"
+        chevron         = "▾" if is_selected else "›"
+
+        # The entire card is one st.button with HTML as its label
+        card_html = f"""
+<div style="background:{selected_bg};border:1px solid {selected_border};border-left:3px solid {border};
+            border-radius:10px;padding:14px 18px;margin-bottom:0px;text-align:left;width:100%;
+            box-sizing:border-box;{'box-shadow:0 0 18px ' + fg + '22;' if is_selected else ''}">
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div style="flex:1;min-width:0;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px;">
+                <span style="background:{bg};color:{fg};font-size:9px;font-weight:700;
+                             padding:1px 8px;border-radius:100px;text-transform:uppercase;">{sev_key.upper()}</span>
+                {cat_html}{type_html}{hot_html}
+                <span style="margin-left:auto;font-size:10px;color:#4a5568;">{time_str}</span>
             </div>
+            <div style="font-size:14px;font-weight:600;color:#e8ecf4;line-height:1.4;margin-bottom:5px;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{title}</div>
+            <div style="font-size:12px;color:#7a8599;line-height:1.5;
+                        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{short_sum}</div>
+            <div style="font-size:10px;color:#4a5568;margin-top:7px;">📰 {source}</div>
         </div>
-        """, unsafe_allow_html=True)
+        <div style="flex-shrink:0;font-size:18px;color:{chevron_color};padding-top:2px;">{chevron}</div>
+    </div>
+</div>"""
 
-        # Invisible button overlaid for click detection
-        btn_key = f"intel_card_{i}"
-        if st.button("›", key=btn_key, help="View details"):
-            if st.session_state["intel_selected_idx"] == i:
-                st.session_state["intel_selected_idx"] = None  # toggle off
-            else:
-                st.session_state["intel_selected_idx"] = i
+        # Wrap in a div we can target with CSS to nuke the button chrome
+        st.markdown(f'<div data-card-btn="{i}" style="margin-bottom:6px;">', unsafe_allow_html=True)
+        clicked = st.button(card_html, key=f"card_{i}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if clicked:
+            st.session_state["intel_selected_idx"] = None if is_selected else i
             st.rerun()
 
-        # ── Detail panel — renders inline right below the clicked card ────────
-        if st.session_state["intel_selected_idx"] == i:
+        # Detail panel opens right below clicked card
+        if is_selected:
             _render_detail_panel(row, {
                 "title_col": title_col, "summary_col": summary_col,
                 "source_col": source_col, "severity_col": severity_col,
@@ -562,11 +596,17 @@ def _render_detail_panel(row: "pd.Series", cols: dict, sev_key: str, fg: str, bg
     inc_date  = _date_str("inc_date_col")
     pub_date  = _date_str("pub_date_col")
 
-    # keywords
+    # keywords — handle plain string, comma-list, or Python list repr
     kw_col = cols.get("kw_col")
-    kw_raw = str(row.get(kw_col,"")) if kw_col else ""
+    kw_raw = str(row.get(kw_col, "")) if kw_col else ""
+    # strip Python list wrapper e.g. "['foo', 'bar']" → "foo, bar"
+    kw_raw = kw_raw.strip()
+    if kw_raw.startswith("[") and kw_raw.endswith("]"):
+        kw_raw = kw_raw[1:-1]
+    # remove surrounding quotes on individual tokens
+    kw_raw = _re.sub(r'["\']', '', kw_raw)
     keywords = [k.strip() for k in _re.split(r"[,;|]", kw_raw)
-                if k.strip() and k.strip().lower() not in ("nan","none","")]
+                if k.strip() and k.strip().lower() not in ("nan", "none", "")]
 
     cat_color  = _get_category_color(cat)
     type_color = _lighten_hex(cat_color, 0.4) if cat else "#7a8599"
@@ -654,12 +694,6 @@ def _render_detail_panel(row: "pd.Series", cols: dict, sev_key: str, fg: str, bg
                 border-radius:12px;padding:24px 28px;margin:4px 0 16px;
                 box-shadow:0 4px 24px {fg}18;position:relative;">
 
-        <!-- Close hint -->
-        <div style="position:absolute;top:14px;right:18px;font-size:11px;color:#4a5568;
-                    font-family:IBM Plex Mono,monospace;cursor:pointer;">
-            click card again to close ✕
-        </div>
-
         <!-- Header -->
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
             {sev_badge}{cat_badge}
@@ -696,7 +730,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -1076,7 +1110,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
