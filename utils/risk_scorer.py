@@ -5,11 +5,14 @@ Custom Risk / Impact-Level Scoring Engine
 Formula:
     impact_score = w1(sector) + w2(country) + w3(attack_type) + w4(data_exposure)
 
-Where each component is normalised 0–1 and the final score maps to:
-    ≥ 0.70  → Critical
-    ≥ 0.50  → High
-    ≥ 0.30  → Medium
-    <  0.30 → Low
+Thresholds (normalised 0–1):
+    > 0.65  → Critical
+    > 0.50  → High
+    > 0.35  → Medium
+    ≤ 0.35  → Low
+
+Max achievable score is ~0.815 (all components maxed), so thresholds are
+calibrated to spread incidents meaningfully across all four bands.
 ────────────────────────────────────────────────────────────────────────────────
 """
 
@@ -18,215 +21,181 @@ import pandas as pd
 from typing import Tuple
 
 # ── Weights (must sum to 1.0) ─────────────────────────────────────────────────
-W1_SECTOR       = 0.25
-W2_COUNTRY      = 0.20
-W3_ATTACK_TYPE  = 0.35   # highest weight — attack type drives severity most
-W4_DATA_EXPOSURE= 0.20
+W1_SECTOR        = 0.25
+W2_COUNTRY       = 0.20
+W3_ATTACK_TYPE   = 0.35   # highest — attack type drives severity most
+W4_DATA_EXPOSURE = 0.20
 
-assert abs(W1_SECTOR + W2_COUNTRY + W3_ATTACK_TYPE + W4_DATA_EXPOSURE - 1.0) < 1e-9, \
-    "Weights must sum to 1.0"
+assert abs(W1_SECTOR + W2_COUNTRY + W3_ATTACK_TYPE + W4_DATA_EXPOSURE - 1.0) < 1e-9
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  W1 — SECTOR SCORE
+#  W1 — SECTOR  (0.2 / 0.4 / 0.6 / 0.8)
 # ══════════════════════════════════════════════════════════════════════════════
 _SECTOR_TIER1 = [
-    "government", "financial service", "finance", "banking", "bank",
-    "defense", "defence", "military", "healthcare", "hospital", "health",
-    "energy", "utility", "utilities", "power grid", "nuclear",
+    "government", "federal", "ministry", "parliament", "pdrm", "police",
+    "financial service", "finance", "banking", "bank", "bursa", "bnm",
+    "defense", "defence", "military", "armed forces",
+    "healthcare", "hospital", "clinic", "health", "medical",
+    "energy", "utility", "utilities", "power grid", "nuclear", "petronas",
+    "water", "critical infrastructure",
 ]
 _SECTOR_TIER2 = [
     "manufacturing", "construction", "transportation", "logistics",
-    "supply chain", "building automation", "digital", "information technology",
-    "it service", "telecommunication", "telecom", "media",
+    "supply chain", "building automation",
+    "digital", "information technology", "it service", "cyber",
+    "telecommunication", "telecom", "telco", "maxis", "celcom", "digi", "unifi",
+    "media", "broadcast", "news agency",
 ]
 _SECTOR_TIER3 = [
-    "consumer", "retail", "product", "service", "industrial",
-    "plantation", "agriculture", "property", "real estate",
+    "consumer", "retail", "e-commerce", "ecommerce", "shopping",
+    "product", "service", "industrial", "plantation", "agriculture",
+    "property", "real estate", "education", "university", "school",
+    "tourism", "hotel", "restaurant",
 ]
 
-
 def score_sector(text: str) -> float:
-    """
-    Returns sector score (0.2 – 0.8) based on highest-matching tier found
-    anywhere in the combined text (sector field + summary).
-    """
     t = str(text).lower()
-    if any(kw in t for kw in _SECTOR_TIER1):
-        return 0.8
-    if any(kw in t for kw in _SECTOR_TIER2):
-        return 0.6
-    if any(kw in t for kw in _SECTOR_TIER3):
-        return 0.4
+    if any(kw in t for kw in _SECTOR_TIER1): return 0.8
+    if any(kw in t for kw in _SECTOR_TIER2): return 0.6
+    if any(kw in t for kw in _SECTOR_TIER3): return 0.4
     return 0.2
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  W2 — COUNTRY SCORE
+#  W2 — COUNTRY  (0.3 / 0.5 / 0.7)
 # ══════════════════════════════════════════════════════════════════════════════
-_MALAYSIA_KW = ["malaysia", "malaysian", "kuala lumpur", "kl", "putrajaya", "cyberjaya"]
+_MALAYSIA_KW = [
+    "malaysia", "malaysian", "kuala lumpur", " kl ", "putrajaya",
+    "cyberjaya", "sabah", "sarawak", "penang", "johor", "selangor",
+]
 _SEA_KW = [
     "singapore", "indonesia", "thailand", "philippines", "vietnam",
-    "myanmar", "cambodia", "laos", "brunei", "timor", "southeast asia",
-    "asean",
+    "myanmar", "cambodia", "laos", "brunei", "timor",
+    "southeast asia", "asean",
 ]
 
-
 def score_country(text: str) -> float:
-    """
-    Returns country score based on geographic relevance.
-        Malaysia        → 0.7
-        Southeast Asia  → 0.5
-        Global / other  → 0.3
-    """
     t = str(text).lower()
-    if any(kw in t for kw in _MALAYSIA_KW):
-        return 0.7
-    if any(kw in t for kw in _SEA_KW):
-        return 0.5
+    if any(kw in t for kw in _MALAYSIA_KW): return 0.7
+    if any(kw in t for kw in _SEA_KW):     return 0.5
     return 0.3
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  W3 — ATTACK TYPE SCORE
+#  W3 — ATTACK TYPE  (0.2 / 0.5 / 0.9)
 # ══════════════════════════════════════════════════════════════════════════════
 _ATTACK_CRITICAL = [
-    "ransomware", "data breach", "supply chain attack", "supply chain",
-    "advanced persistent threat", "apt", "zero-day", "zero day", "0day",
-    "business email compromise", "bec", "remote code execution", "rce",
+    "ransomware", "data breach", "databreach", "data leak", "dataleak",
+    "supply chain attack", "supply chain",
+    "advanced persistent threat", "apt",
+    "zero-day", "zero day", "0day", "0-day",
+    "business email compromise", "bec",
+    "remote code execution", "rce",
     "unauthorized privileged access", "privilege escalation",
     "critical infrastructure attack",
+    "cyberattack", "cyber attack", "hack", "hacked", "hacking",
+    "breach", "breached", "leaked", "exposed database", "database exposed",
+    "stolen data", "data stolen", "credentials stolen",
+    "intrusion", "compromised", "unauthorized access",
 ]
 _ATTACK_MEDIUM = [
-    "phishing", "spear phishing", "malware", "credential theft",
-    "credential stuffing", "brute force", "distributed denial",
-    "ddos", "dos attack", "insider threat", "web application attack",
-    "sql injection", "xss", "api abuse", "api exploit", "spyware",
+    "phishing", "spear phishing", "smishing", "vishing",
+    "malware", "trojan", "virus", "worm", "keylogger",
+    "credential theft", "credential stuffing", "brute force",
+    "distributed denial", "ddos", "dos attack",
+    "insider threat", "web application attack",
+    "sql injection", "xss", "cross-site",
+    "api abuse", "api exploit", "spyware", "adware",
     "cloud misconfiguration", "misconfiguration",
+    "scam", "fraud", "phishing scam", "online scam",
+    "identity theft", "impersonation",
+    "sim swap", "account takeover",
 ]
 _ATTACK_LOW = [
-    "website defacement", "defacement", "spam", "botnet", "scanning",
-    "port scan", "cryptojacking", "crypto mining", "adware",
-    "reconnaissance", "recon", "social engineering", "low-level",
+    "website defacement", "defacement",
+    "spam", "botnet", "port scan", "scanning",
+    "cryptojacking", "crypto mining",
+    "reconnaissance", "recon",
+    "low-level social engineering",
 ]
 
-
 def score_attack_type(text: str) -> float:
-    """
-    Returns attack-type score by scanning the combined text for known keywords.
-    Uses the highest severity match found (critical > medium > low).
-        Critical → 0.9
-        Medium   → 0.5
-        Low      → 0.2
-    """
     t = str(text).lower()
-    if any(kw in t for kw in _ATTACK_CRITICAL):
-        return 0.9
-    if any(kw in t for kw in _ATTACK_MEDIUM):
-        return 0.5
-    if any(kw in t for kw in _ATTACK_LOW):
-        return 0.2
-    return 0.3   # unknown / unclassified
-
+    if any(kw in t for kw in _ATTACK_CRITICAL): return 0.9
+    if any(kw in t for kw in _ATTACK_MEDIUM):   return 0.5
+    if any(kw in t for kw in _ATTACK_LOW):       return 0.2
+    return 0.3
 
 def classify_attack(text: str) -> str:
-    """Return human-readable attack class label."""
     t = str(text).lower()
-    if any(kw in t for kw in _ATTACK_CRITICAL):
-        return "Critical Attack"
-    if any(kw in t for kw in _ATTACK_MEDIUM):
-        return "Medium Attack"
-    if any(kw in t for kw in _ATTACK_LOW):
-        return "Low-Level Attack"
+    if any(kw in t for kw in _ATTACK_CRITICAL): return "Critical Attack"
+    if any(kw in t for kw in _ATTACK_MEDIUM):   return "Medium Attack"
+    if any(kw in t for kw in _ATTACK_LOW):       return "Low-Level Attack"
     return "Unclassified"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  W4 — DATA EXPOSURE IMPACT SCORE
+#  W4 — DATA EXPOSURE  (0.3 / 0.5 / 0.8)
 # ══════════════════════════════════════════════════════════════════════════════
 _EXPOSURE_HIGH = [
-    "identity theft", "privacy breach", "personally identifiable",
-    "pii", "financial loss", "financial fraud", "integrity loss",
+    "identity theft", "privacy breach", "personally identifiable", "pii",
+    "financial loss", "financial fraud", "integrity loss",
     "regulatory", "legal consequence", "fine", "gdpr", "pdpa",
-    "lawsuit", "litigation", "data leak", "sensitive data exposed",
-    "confidential data", "medical record", "health record",
-    "credit card", "bank account", "password exposed",
+    "lawsuit", "litigation",
+    "data leak", "data breach", "sensitive data", "confidential data",
+    "medical record", "health record",
+    "credit card", "bank account", "password exposed", "password leaked",
+    "personal data", "personal information", "ic number", "passport",
+    "phone number leaked", "email leaked", "credentials exposed",
+    "millions of", "thousands of records", "records exposed",
 ]
 _EXPOSURE_MED = [
     "reputational damage", "reputation", "brand damage",
     "customer trust", "public disclosure", "media coverage",
-    "negative publicity",
+    "negative publicity", "embarrassment", "investigation",
+    "suspended", "taken down", "disrupted", "service outage",
 ]
 _EXPOSURE_LOW = [
     "competitive disadvantage", "minor disruption", "performance impact",
     "service degradation", "limited impact", "low impact",
+    "website down", "temporarily unavailable",
 ]
 
-
 def score_data_exposure(text: str) -> float:
-    """
-    Returns data-exposure impact score from summary text.
-        High (identity/financial/legal) → 0.8
-        Medium (reputational)           → 0.5
-        Low (competitive/minor)         → 0.3
-    """
     t = str(text).lower()
-    if any(kw in t for kw in _EXPOSURE_HIGH):
-        return 0.8
-    if any(kw in t for kw in _EXPOSURE_MED):
-        return 0.5
-    if any(kw in t for kw in _EXPOSURE_LOW):
-        return 0.3
-    return 0.3   # default: unknown → treat as low
+    if any(kw in t for kw in _EXPOSURE_HIGH): return 0.8
+    if any(kw in t for kw in _EXPOSURE_MED):  return 0.5
+    if any(kw in t for kw in _EXPOSURE_LOW):  return 0.3
+    return 0.3
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  COMPOSITE SCORER
 # ══════════════════════════════════════════════════════════════════════════════
 def compute_impact_score(
-    sector_text:   str,
-    country_text:  str,
-    attack_text:   str,
-    summary_text:  str,
+    sector_text:  str,
+    country_text: str,
+    attack_text:  str,
+    summary_text: str,
 ) -> Tuple[float, str, dict]:
-    """
-    Compute the weighted impact score for a single incident.
-
-    Parameters
-    ----------
-    sector_text  : incident sector / category field
-    country_text : country / region field
-    attack_text  : incident_type / attack_type field
-    summary_text : full summary / description field
-
-    Returns
-    -------
-    (score: float, severity_label: str, breakdown: dict)
-        score          — raw weighted score [0, 1]
-        severity_label — "Critical" | "High" | "Medium" | "Low"
-        breakdown      — per-component scores for transparency
-    """
-    # Build combined texts for each dimension
-    combined_sector  = f"{sector_text} {summary_text}"
-    combined_country = f"{country_text} {summary_text}"
-    combined_attack  = f"{attack_text} {summary_text}"
-    combined_exposure= summary_text
+    combined_sector   = f"{sector_text} {summary_text}"
+    combined_country  = f"{country_text} {summary_text}"
+    combined_attack   = f"{attack_text} {summary_text}"
+    combined_exposure = summary_text
 
     s1 = score_sector(combined_sector)
     s2 = score_country(combined_country)
     s3 = score_attack_type(combined_attack)
     s4 = score_data_exposure(combined_exposure)
 
-    total = W1_SECTOR * s1 + W2_COUNTRY * s2 + W3_ATTACK_TYPE * s3 + W4_DATA_EXPOSURE * s4
+    total = W1_SECTOR*s1 + W2_COUNTRY*s2 + W3_ATTACK_TYPE*s3 + W4_DATA_EXPOSURE*s4
 
-    if total > 0.8:
-        label = "Critical"
-    elif total > 0.6:
-        label = "High"
-    elif total > 0.4:
-        label = "Medium"
-    else:
-        label = "Low"
+    # Thresholds calibrated to max achievable score of ~0.815
+    if   total > 0.65: label = "Critical"
+    elif total > 0.50: label = "High"
+    elif total > 0.35: label = "Medium"
+    else:              label = "Low"
 
     breakdown = {
         "sector_score":        round(s1, 3),
@@ -236,7 +205,6 @@ def compute_impact_score(
         "weighted_total":      round(total, 4),
         "attack_class":        classify_attack(combined_attack),
     }
-
     return round(total, 4), label, breakdown
 
 
@@ -244,40 +212,19 @@ def compute_impact_score(
 #  DATAFRAME-LEVEL SCORER
 # ══════════════════════════════════════════════════════════════════════════════
 def score_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Apply the risk formula to every row of a DataFrame.
-
-    Looks for these columns (with automatic fallbacks):
-        sector   → category, incident_category, sector
-        country  → country, nation, location, region
-        attack   → incident_type, attack_type, type, threat_type
-        summary  → summary, description, content
-
-    Adds / overwrites:
-        risk_score          float   weighted composite score
-        severity            str     Critical / High / Medium / Low
-        sector_score        float   W1 component
-        country_score       float   W2 component
-        attack_type_score   float   W3 component
-        data_exposure_score float   W4 component
-        attack_class        str     human-readable attack tier
-    """
     df = df.copy()
 
     def _pick(cols):
         for c in cols:
-            if c in df.columns:
-                return c
+            if c in df.columns: return c
         return None
 
-    sector_col   = _pick(["sector", "category", "incident_category"])
-    country_col  = _pick(["country", "nation", "location", "region"])
-    attack_col   = _pick(["incident_type", "attack_type", "type", "threat_type"])
-    summary_col  = _pick(["summary", "description", "content"])
+    sector_col  = _pick(["sector", "category", "incident_category"])
+    country_col = _pick(["country", "nation", "location", "region"])
+    attack_col  = _pick(["incident_type", "attack_type", "type", "threat_type"])
+    summary_col = _pick(["summary", "description", "content"])
 
-    scores      = []
-    labels      = []
-    breakdowns  = []
+    scores, labels, breakdowns = [], [], []
 
     for _, row in df.iterrows():
         sector  = str(row.get(sector_col,  "")) if sector_col  else ""
@@ -301,14 +248,7 @@ def score_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SUPABASE WRITE-BACK HELPER
-# ══════════════════════════════════════════════════════════════════════════════
 def build_update_payload(row: pd.Series) -> dict:
-    """
-    Build the dict to UPSERT back to Supabase for a single scored row.
-    Only includes the columns we want to overwrite.
-    """
     return {
         "severity":            row["severity"],
         "risk_score":          float(row["risk_score"]),
