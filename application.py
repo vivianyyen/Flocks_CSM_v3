@@ -1,7 +1,7 @@
 import streamlit as st
 
 st.set_page_config(
-    page_title="Incident Intelligence Dashboard",
+    page_title="Cyber News Dashboard",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -308,7 +308,7 @@ def kpi_row(specs: list):
 def _sidebar_branding():
     st.markdown(f"""
     <div style="padding:20px 4px 14px;border-bottom:1px solid #1a1f2e;margin-bottom:10px;">
-        <div style="font-size:16px;font-weight:600;color:#f0f6fc;">🛡️ Incident Intel</div>
+        <div style="font-size:16px;font-weight:600;color:#f0f6fc;">🛡️ Cyber News</div>
         <div style="font-size:11px;color:#484f58;font-family:IBM Plex Mono,monospace;margin-top:3px;">
             <span class="live-dot"></span> LIVE · {now_my().strftime('%H:%M')} GMT+8
         </div>
@@ -954,7 +954,7 @@ def page_cyber_news():
     # ── Load ALL incidents first (needed to populate filter options) ──────────
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents():
-        return get_data("cyber_news")   # ← paginated, returns ALL rows
+        return get_data("incidents")   # ← paginated, returns ALL rows
 
     with st.spinner("Loading incidents…"):
         df_raw = load_incidents()
@@ -1049,24 +1049,9 @@ def page_cyber_news():
         (k5, new_this_week,      "New This Week",      "Last 7 days",                 "up"),
     ])
 
-    # ── Search bar (above Cyber News Feed) ───────────────────────────────────
-    st.markdown("<div class='section-header'>Search</div>", unsafe_allow_html=True)
-    search_q = st.text_input(
-        "search_bar",
-        placeholder="🔍  Search by keyword, title, entity, category, incident type…",
-        label_visibility="collapsed",
-        key="feed_search",
-    )
-
     # ── Charts ────────────────────────────────────────────────────────────────
     st.markdown("<div class='section-header'>Incident Overview</div>", unsafe_allow_html=True)
     _render_linked_cat_type_chart(df)
-
-    # ── Impact Level Distribution ─────────────────────────────────────────────
-    st.markdown("<div class='section-header'>Impact Level Distribution</div>", unsafe_allow_html=True)
-    il1, il2 = st.columns([2, 1])
-    with il1: _render_impact_level_chart(df)
-    with il2: render_impact_distribution(df)
 
     st.markdown("<div class='section-header'>Highest Attacked Sectors</div>", unsafe_allow_html=True)
     sc1, sc2 = st.columns([2, 1])
@@ -1096,6 +1081,15 @@ def page_cyber_news():
                 unsafe_allow_html=True,
             )
             _render_trending_news(df, max_items=6)
+
+    # ── Search bar (right above feed) ────────────────────────────────────────
+    st.markdown("<div class='section-header'>Search</div>", unsafe_allow_html=True)
+    search_q = st.text_input(
+        "search_bar",
+        placeholder="🔍  Search by keyword, title, entity, category, incident type…",
+        label_visibility="collapsed",
+        key="feed_search",
+    )
 
     # ── Cyber News Feed ───────────────────────────────────────────────────────
     st.markdown("<div class='section-header'>Cyber News Feed</div>", unsafe_allow_html=True)
@@ -1355,7 +1349,7 @@ def page_ai_analyst():
     st.markdown("""
     <div class="chat-hero">
         <div style="font-size:48px;">🤖</div>
-        <div class="chat-hero-title">Incident Intelligence Analyst</div>
+        <div class="chat-hero-title">Cyber News Analyst</div>
         <div class="chat-hero-sub">
             Ask questions about incidents, ransomware trends, affected sectors,
             countries, threat actors — backed by your live Supabase data.
@@ -1365,7 +1359,7 @@ def page_ai_analyst():
 
     @st.cache_data(ttl=120, show_spinner=False)
     def load_incidents_for_chat():
-        return get_data("cyber_news")
+        return get_data("incidents")
 
     with st.spinner("Preparing data context for AI…"):
         df_chat = load_incidents_for_chat()
