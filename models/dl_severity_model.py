@@ -18,8 +18,30 @@ def predict_severity(text):
     return {"severity": sev, "confidence": score}
 
 def score_dataframe_dl(df):
-    txt = df.astype(str).agg(" ".join, axis=1)
-    preds = txt.apply(predict_severity)
-    df["dl_severity"] = preds.apply(lambda x: x["severity"])
-    df["dl_confidence"] = preds.apply(lambda x: x["confidence"])
+    if df is None or len(df) == 0:
+        return df
+
+    df = df.copy()
+
+    def build_text(row):
+        parts = []
+        for value in row.values:
+            try:
+                parts.append(str(value))
+            except Exception:
+                pass
+        return " ".join(parts)
+
+    text_series = df.apply(build_text, axis=1)
+
+    predictions = text_series.apply(predict_severity)
+
+    df["dl_severity"] = predictions.apply(
+        lambda x: x.get("severity", "Medium")
+    )
+
+    df["dl_confidence"] = predictions.apply(
+        lambda x: x.get("confidence", 0.5)
+    )
+
     return df
