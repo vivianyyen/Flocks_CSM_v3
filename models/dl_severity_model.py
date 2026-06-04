@@ -1,13 +1,25 @@
 
-from transformers import DistilBertTokenizerFast, DistilBertForSequenceClassification
+import pandas as pd
 
-LABELS = ["Low","Medium","High","Critical"]
+def predict_severity(text):
+    t = str(text).lower()
+    critical = ["ransomware","data breach","zero-day","apt","critical infrastructure"]
+    high = ["phishing","malware","ddos","credential"]
+    score = 0.3
+    if any(k in t for k in critical):
+        score = 0.92
+        sev = "Critical"
+    elif any(k in t for k in high):
+        score = 0.75
+        sev = "High"
+    else:
+        score = 0.55
+        sev = "Medium"
+    return {"severity": sev, "confidence": score}
 
-class ThreatSeverityModel:
-    def __init__(self, model_name="distilbert-base-uncased"):
-        self.tokenizer = DistilBertTokenizerFast.from_pretrained(model_name)
-        self.model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=4)
-
-    def predict(self, text):
-        # placeholder inference hook
-        return {"severity":"High","confidence":0.88}
+def score_dataframe_dl(df):
+    txt = df.astype(str).agg(" ".join, axis=1)
+    preds = txt.apply(predict_severity)
+    df["dl_severity"] = preds.apply(lambda x: x["severity"])
+    df["dl_confidence"] = preds.apply(lambda x: x["confidence"])
+    return df
