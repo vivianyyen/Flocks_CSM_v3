@@ -23,7 +23,9 @@ from utils.charts import (
     render_source_breakdown,
 )
 from utils.chatbot import chatbot_ui
-from utils.risk_scorer import score_dataframe   # ← from application.py (v1)
+from utils.risk_scorer import score_dataframe
+from models.dl_severity_model import score_dataframe_dl
+from decision_analysis.topsis import rank_dataframe   # ← from application.py (v1)
 
 TZ_MY = ZoneInfo("Asia/Kuala_Lumpur")
 def now_my(): return datetime.now(tz=TZ_MY)
@@ -106,6 +108,10 @@ def get_data(table: str) -> pd.DataFrame:
 
         # ── Apply custom risk scoring (v1 improvement) ────────────────────────
         df = score_dataframe(df)
+        df = score_dataframe_dl(df)
+        df = rank_dataframe(df)
+        df = score_dataframe_dl(df)
+        df = rank_dataframe(df)
 
     # ── Also score global_news rows (same scoring pipeline) ──────────────────
     if table == "global_news":
@@ -140,6 +146,10 @@ def get_data(table: str) -> pd.DataFrame:
             else:
                 df["country"] = "Unknown"
         df = score_dataframe(df)
+        df = score_dataframe_dl(df)
+        df = rank_dataframe(df)
+        df = score_dataframe_dl(df)
+        df = rank_dataframe(df)
 
     return df
 
