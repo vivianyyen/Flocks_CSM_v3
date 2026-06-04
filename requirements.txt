@@ -7,3 +7,8 @@ wordcloud
 matplotlib
 google.genai
 
+
+transformers
+torch
+numpy
+scikit-learn
