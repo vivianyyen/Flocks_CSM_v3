@@ -24,10 +24,14 @@ from utils.charts import (
 )
 from utils.chatbot import chatbot_ui
 from utils.risk_scorer import score_dataframe
-from models.dl_severity_model import score_dataframe_dl
 from decision_analysis.topsis import rank_dataframe   # ← from application.py (v1)
+import os
 
+print("Current directory:", os.getcwd())
+print("Models exists:", os.path.exists("models"))
+print("DL file exists:", os.path.exists("models/dl_severity_model.py"))
 TZ_MY = ZoneInfo("Asia/Kuala_Lumpur")
+
 def now_my(): return datetime.now(tz=TZ_MY)
 
 
